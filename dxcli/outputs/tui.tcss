@@ -1,0 +1,78 @@
+/* tui.tcss */
+
+DxApp {
+    layout: vertical;
+    background: $background;
+}
+
+#top-panel {
+    height: 12;
+    layout: horizontal;
+    dock: top;
+}
+
+.box {
+    margin: 1;
+    padding: 1;
+    border: round $primary;
+    background: $panel;
+}
+
+#partitions-box {
+    width: 33%;
+}
+
+#prediction-box {
+    width: 33%;
+}
+
+#anomaly-box {
+    width: 34%;
+}
+
+.pulse-warning {
+    border: double $error;
+    color: $error;
+    text-style: bold;
+}
+
+#middle-panel {
+    height: 1fr;
+    margin: 0 1;
+}
+
+#bottom-panel {
+    height: 12;
+    layout: horizontal;
+    dock: bottom;
+}
+
+#problems-box {
+    width: 50%;
+    border: round $warning;
+}
+
+#prescriptions-box {
+    width: 50%;
+    border: round $success;
+}
+
+DataTable {
+    border: round $secondary;
+}
+
+Label {
+    padding-bottom: 1;
+}
+
+#scan-spinner {
+    height: 3;
+    content-align: center middle;
+    color: $accent;
+}
+
+.header-text {
+    text-align: center;
+    text-style: bold;
+    color: $accent;
+}
