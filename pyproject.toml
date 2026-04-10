@@ -7,7 +7,7 @@ name = "dxcli"
 version = "0.1.0"
 description = "Intelligent disk diagnostics and storage observability for SREs"
 authors = [
-    {name = "Your Name", email = "you@example.com"}
+    {name = "Seshadri Naidu Vangapandu", email = "seshuvangapandu@gmail.com"}
 ]
 license = "MIT"
 readme = "README.md"
@@ -40,9 +40,9 @@ test = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-username/dxcli"
-Repository = "https://github.com/your-username/dxcli"
-Issues = "https://github.com/your-username/dxcli/issues"
+Homepage = "https://github.com/Seshadri724/dxcli"
+Repository = "https://github.com/Seshadri724/dxcli"
+Issues = "https://github.com/Seshadri724/dxcli/issues"
 
 [project.scripts]
 dxcli = "dxcli.cli:cli"
