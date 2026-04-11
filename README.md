@@ -6,7 +6,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/diskrx.svg)](https://pypi.org/project/diskrx/)
 [![Python](https://img.shields.io/pypi/pyversions/diskrx.svg)](https://pypi.org/project/diskrx/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Downloads](https://img.shields.io/pypi/dm/diskrx)](https://pypi.org/project/diskrx/)
+
 
 ---
 
@@ -173,7 +173,7 @@ Have a feature request? [Open an issue](https://github.com/Seshadri724/dxcli/iss
 Contributions are welcome. Please read the contributing guide before submitting a PR.
 
 ```bash
-git clone https://github.com/Seshadri724/dxcli
+git clone https://github.com/Seshadri724/diskrx
 cd dxcli
 python -m venv venv && source venv/bin/activate
 pip install -e ".[test]"
