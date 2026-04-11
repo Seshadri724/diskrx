@@ -162,3 +162,7 @@ history.db-journal
 .dx/
 
 *.md
+
+!*README.md
+
+diskrx-0.1.0/
