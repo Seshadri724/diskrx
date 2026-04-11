@@ -3,10 +3,10 @@
 > **Stop firefighting. Start predicting.**  
 > Replace your 45-minute disk investigation with a 30-second diagnosis.
 
-[![PyPI version](https://img.shields.io/pypi/v/dxcli.svg)](https://pypi.org/project/dxcli/)
-[![Python](https://img.shields.io/pypi/pyversions/dxcli.svg)](https://pypi.org/project/dxcli/)
+[![PyPI version](https://img.shields.io/pypi/v/diskrx.svg)](https://pypi.org/project/diskrx/)
+[![Python](https://img.shields.io/pypi/pyversions/diskrx.svg)](https://pypi.org/project/diskrx/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Downloads](https://img.shields.io/pypi/dm/dxcli)](https://pypi.org/project/dxcli/)
+[![Downloads](https://img.shields.io/pypi/dm/diskrx)](https://pypi.org/project/diskrx/)
 
 ---
 
@@ -95,7 +95,7 @@ Run as a background daemon. Exports `/metrics` for Grafana integration. Plug dxc
 ## Installation
 
 ```bash
-pip install dxcli
+pip install diskrx
 ```
 
 That's it. No config files. No daemons required to get started.
@@ -155,24 +155,16 @@ dxcli stores lightweight disk snapshots in a local SQLite database (`~/.dx/histo
 Add to your `prometheus.yml`:
 ```yaml
 scrape_configs:
-  - job_name: 'dxcli'
+  - job_name: 'diskrx'
     static_configs:
       - targets: ['localhost:8000']
 ```
 
-Then import the dxcli dashboard from Grafana marketplace. *(Coming soon)*
+
 
 ---
 
-## Roadmap
-
-- [ ] Grafana dashboard JSON export
-- [ ] Slack / PagerDuty alert webhooks
-- [ ] Multi-host support via SSH
-- [ ] Docker volume awareness
-- [ ] Cloud storage integration (S3 cost attribution)
-
-Have a feature request? [Open an issue](https://github.com/your-username/dxcli/issues).
+Have a feature request? [Open an issue](https://github.com/Seshadri724/dxcli/issues).
 
 ---
 
@@ -181,7 +173,7 @@ Have a feature request? [Open an issue](https://github.com/your-username/dxcli/i
 Contributions are welcome. Please read the contributing guide before submitting a PR.
 
 ```bash
-git clone https://github.com/your-username/dxcli
+git clone https://github.com/Seshadri724/dxcli
 cd dxcli
 python -m venv venv && source venv/bin/activate
 pip install -e ".[test]"
