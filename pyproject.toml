@@ -31,6 +31,7 @@ dependencies = [
     "textual>=0.50",
     "psutil>=5.9.0",
     "numpy>=1.24.0",
+    "sentry-sdk>=1.30.0",
 ]
 
 [project.optional-dependencies]

@@ -40,7 +40,9 @@ class PrescriptionEngine:
                     name=name,
                     template=template,
                     risk="safe",
-                    size_savings_bytes=log.size_bytes
+                    size_savings_bytes=log.size_bytes,
+                    action_type="create_file",
+                    target_path=f"/etc/logrotate.d/{service_name}" if not is_windows else None
                 ))
 
         # Stale Prescriptions
@@ -55,7 +57,9 @@ class PrescriptionEngine:
                 name=f"Remove stale file: {os.path.basename(stale.path)}",
                 template=cmd,
                 risk="needs-review",
-                size_savings_bytes=stale.size_bytes
+                size_savings_bytes=stale.size_bytes,
+                action_type="delete",
+                target_path=stale.path
             ))
 
         return prescriptions

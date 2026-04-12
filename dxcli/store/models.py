@@ -58,3 +58,5 @@ class Prescription:
     template: str
     risk: str
     size_savings_bytes: int
+    action_type: Optional[str] = None  # e.g., 'delete', 'create_file'
+    target_path: Optional[str] = None

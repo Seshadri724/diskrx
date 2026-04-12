@@ -1,14 +1,39 @@
+import sys
+if sys.version_info < (3, 10):
+    sys.exit("dxcli requires Python 3.10 or higher.")
+
 import click
 import os
 from rich.console import Console
 
 console = Console()
 
+from .config import DEFAULT_CONFIG
+
+def init_telemetry():
+    if DEFAULT_CONFIG.telemetry_opt_in:
+        import sentry_sdk
+        sentry_sdk.init(
+            dsn="https://placeholder@sentry.io/123456",  # To be replaced by user
+            traces_sample_rate=1.0,
+            environment="production"
+        )
+
 @click.group(invoke_without_command=True)
-@click.version_option(version="0.1.0", prog_name="dxcli")
+@click.version_option(version="0.1.2", prog_name="dxcli")
 @click.pass_context
 def cli(ctx):
     """dxcli — The Disk Doctor. Run with no arguments for instant diagnosis."""
+    # First-run telemetry opt-in
+    if DEFAULT_CONFIG.telemetry_opt_in is None:
+        if click.confirm("Help improve dxcli by sending anonymous crash reports?"):
+            DEFAULT_CONFIG.telemetry_opt_in = True
+        else:
+            DEFAULT_CONFIG.telemetry_opt_in = False
+        DEFAULT_CONFIG.save()
+    
+    init_telemetry()
+
     if ctx.invoked_subcommand is None:
         # Default: run diagnose on current directory
         ctx.invoke(diagnose, path='.')
@@ -237,6 +262,68 @@ def serve(port, bind, interval, path):
     console.print(f"[bold green]Sentinel Metrics Server[/bold green] live at http://{display_addr}:{port}/metrics")
     
     watch.callback(interval, path)
+
+@cli.command()
+@click.argument('path', default='.')
+@click.option('--yes', '-y', is_flag=True, help='Skip confirmation prompts')
+def heal(path, yes):
+    """Automatically fix issues identified during diagnosis."""
+    from .platform import provider
+    from .collectors.log_finder import LogFinderCollector
+    from .collectors.stale_files import StaleFileCollector
+    from .analyzers import PrescriptionEngine
+    from .heal_engine import HealEngine
+    
+    path = os.path.abspath(path)
+    console.print(f"[bold cyan]Heal Engine[/bold cyan] scanning {path}...")
+    
+    # 1. Run collectors
+    log_collector = LogFinderCollector()
+    logs = log_collector.scan([path])
+    
+    stale_collector = StaleFileCollector()
+    stales = stale_collector.scan([path])
+    
+    # 2. Get prescriptions
+    engine = PrescriptionEngine()
+    prescriptions = engine.synthesize(logs, stales)
+    
+    if not prescriptions:
+        console.print("[green]No issues found that require healing.[/green]")
+        return
+        
+    # 3. Present and Execute
+    healer = HealEngine()
+    count = 0
+    for p in prescriptions:
+        if not p.target_path:
+            continue
+            
+        if not yes:
+            if not click.confirm(f"Execute action: {p.name}?"):
+                continue
+        
+        console.print(f"Applying: [dim]{p.name}[/dim]...", end="")
+        if healer.execute(p):
+            console.print(" [bold green]DONE[/bold green]")
+            count += 1
+        else:
+            console.print(" [bold red]FAILED[/bold red]")
+            
+    console.print(f"\n[bold green]Healing session complete. {count} actions applied.[/bold green]")
+    console.print(f"Audit log: {healer.audit_log_path}")
+
+@cli.command()
+def undo():
+    """Revert the last healing action."""
+    from .heal_engine import HealEngine
+    healer = HealEngine()
+    
+    result = healer.undo()
+    if result:
+        console.print(f"[bold green]Undo successful:[/bold green] {result}")
+    else:
+        console.print("[yellow]No actions to undo.[/yellow]")
 
 @cli.command()
 def dash():

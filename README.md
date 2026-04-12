@@ -1,12 +1,13 @@
-# 🩺 dxcli — The Disk Doctor
+# dxcli — The Disk Doctor 🩺
 
-> **Stop firefighting. Start predicting.**  
-> Replace your 45-minute disk investigation with a 30-second diagnosis.
-
+[![Tests](https://github.com/Seshadri724/dxcli/actions/workflows/test.yml/badge.svg)](https://github.com/Seshadri724/dxcli/actions/workflows/test.yml)
 [![PyPI version](https://img.shields.io/pypi/v/diskrx.svg)](https://pypi.org/project/diskrx/)
-[![Python](https://img.shields.io/pypi/pyversions/diskrx.svg)](https://pypi.org/project/diskrx/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+`dxcli` is an intelligent disk diagnostics and storage observability platform designed for SREs and DevOps engineers. It doesn't just tell you the disk is full; it tells you why, who's responsible, and how to fix it.
+
+![dxcli Demo](https://via.placeholder.com/800x400.png?text=dxcli+Heal+Engine+Demo)
+*Demo: Running dxcli heal to reclaim space (placeholder)*
 
 ---
 
@@ -76,6 +77,12 @@ Linear regression on historical snapshots stored locally. Tells you:
 
 ### 🖥️ `dxcli dash` — Real-time TUI Dashboard
 A full terminal UI with live sparklines, anomaly alerts, and interactive process maps. No browser required.
+
+### 🩹 `dxcli heal` — Automated Remediation
+Safety first. Running `heal` will:
+- Apply prescriptions (e.g., adding logrotate configs, clearing stale caches).
+- Create an **audit log** in `~/.dx/audit.log`.
+- Store **undo metadata** allowing you to revert with `dxcli undo`.
 
 ```
 ┌─ Disk Overview ─────────────────────────────────┐
@@ -165,6 +172,15 @@ scrape_configs:
 ---
 
 Have a feature request? [Open an issue](https://github.com/Seshadri724/dxcli/issues).
+
+---
+
+## Versioning Strategy
+
+`dxcli` follows [Semantic Versioning (SemVer)](https://semver.org/):
+- **Patch (0.0.X)**: Bug fixes and minor tweaks.
+- **Minor (0.X.0)**: New features and enhancements (backwards compatible).
+- **Major (X.0.0)**: Breaking changes to the CLI or output formats.
 
 ---
 
