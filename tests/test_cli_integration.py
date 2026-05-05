@@ -12,13 +12,22 @@ def test_status_runs():
 def test_diagnose_runs():
     result = runner.invoke(cli, ['diagnose', '.'])
     assert result.exit_code == 0
-    assert "Disk Diagnosis" in result.output or "TOP CONSUMERS" in result.output
+    assert "Primary Culprit" in result.output or "🩺" in result.output
+
+def test_diagnose_json():
+    result = runner.invoke(cli, ['diagnose', '.', '--json'])
+    assert result.exit_code == 0
+    import json
+    data = json.loads(result.output)
+    assert "path" in data
+    assert "top_dirs" in data
+    assert "trends" in data
 
 def test_default_runs_diagnose():
     """Running 'dxcli' with no subcommand should default to diagnose."""
     result = runner.invoke(cli, [])
     assert result.exit_code == 0
-    assert "Disk Diagnosis" in result.output or "TOP CONSUMERS" in result.output
+    assert "Primary Culprit" in result.output or "🩺" in result.output
 
 def test_predict_runs():
     result = runner.invoke(cli, ['predict', '.'])

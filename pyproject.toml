@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "diskrx"
-version = "0.1.1"
+version = "0.1.2"
 description = "Intelligent disk diagnostics and storage observability for SREs"
 authors = [
     {name = "Seshadri Naidu Vangapandu", email = "seshuvangapandu@gmail.com"}
@@ -31,7 +31,7 @@ dependencies = [
     "textual>=0.50",
     "psutil>=5.9.0",
     "numpy>=1.24.0",
-    "sentry-sdk>=1.30.0",
+    "pyyaml>=6.0.0",
 ]
 
 [project.optional-dependencies]
@@ -47,6 +47,10 @@ Issues = "https://github.com/Seshadri724/dxcli/issues"
 
 [project.scripts]
 dxcli = "dxcli.cli:cli"
+
+[tool.setuptools.packages.find]
+include = ["dxcli*"]
+exclude = ["plugins*", "tests*"]
 
 [tool.setuptools.package-data]
 dxcli = ["outputs/*.tcss"]

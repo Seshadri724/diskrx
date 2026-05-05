@@ -22,8 +22,10 @@ class PrescriptionEngine:
                     service_name = "custom_service"
                 
                 if is_windows:
-                    template = f"# Windows does not have logrotate.\n# Manually archive or delete: {log.path}"
-                    name = f"Archive log for {service_name}"
+                    template = f"# Windows does not have logrotate.\n# To reclaim space, you can manually delete or compress: {log.path}"
+                    name = f"Clean up log: {service_name}"
+                    target_path = log.path
+                    action_type = "delete" # Allow emergency deletion on Windows
                 else:
                     template = f"""# /etc/logrotate.d/{service_name}
 {log.path} {{
@@ -34,6 +36,8 @@ class PrescriptionEngine:
     copytruncate
 }}"""
                     name = f"Add logrotate for {service_name}"
+                    target_path = f"/etc/logrotate.d/{service_name}"
+                    action_type = "create_file"
 
                 prescriptions.append(Prescription(
                     id=f"log_{i}",
@@ -41,8 +45,8 @@ class PrescriptionEngine:
                     template=template,
                     risk="safe",
                     size_savings_bytes=log.size_bytes,
-                    action_type="create_file",
-                    target_path=f"/etc/logrotate.d/{service_name}" if not is_windows else None
+                    action_type=action_type,
+                    target_path=target_path
                 ))
 
         # Stale Prescriptions

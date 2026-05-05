@@ -60,3 +60,11 @@ class Prescription:
     size_savings_bytes: int
     action_type: Optional[str] = None  # e.g., 'delete', 'create_file'
     target_path: Optional[str] = None
+
+@dataclass
+class PolicyViolation:
+    rule_name: str
+    path: str
+    message: str
+    severity: str  # 'info', 'warning', 'critical'
+    suggested_action: str

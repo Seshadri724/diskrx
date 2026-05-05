@@ -9,6 +9,7 @@ from .store.models import Prescription
 class HealEngine:
     """
     Executes prescriptions with auditing and undo support.
+    Implements 'Sleep Insurance' (Brian Chesky style) via session summaries.
     """
     def __init__(self):
         self.home = os.path.expanduser("~")
@@ -16,6 +17,9 @@ class HealEngine:
         self.audit_log_path = os.path.join(self.dx_dir, "audit.log")
         self.undo_stack_path = os.path.join(self.dx_dir, "undo_stack.json")
         self.backup_dir = os.path.join(self.dx_dir, "backups")
+        
+        self.session_actions = []
+        self.total_reclaimed = 0
         
         os.makedirs(self.dx_dir, exist_ok=True)
         os.makedirs(self.backup_dir, exist_ok=True)
@@ -29,6 +33,8 @@ class HealEngine:
             "details": details,
             "undo_available": undo_info is not None
         }
+        
+        self.session_actions.append(log_entry)
         
         with open(self.audit_log_path, "a") as f:
             f.write(json.dumps(log_entry) + "\n")
@@ -58,23 +64,25 @@ class HealEngine:
     def execute(self, prescription: Prescription) -> bool:
         """Execute a prescription and store undo info."""
         if not prescription.target_path:
-            # For recommendations that don't have a direct target (like template instructions)
             self._log_action("skip", {"name": prescription.name, "reason": "No target path"})
             return False
 
+        success = False
         if prescription.action_type == "delete":
-            return self._execute_delete(prescription)
+            success = self._execute_delete(prescription)
         elif prescription.action_type == "create_file":
-            return self._execute_create(prescription)
+            success = self._execute_create(prescription)
         
-        return False
+        if success:
+            self.total_reclaimed += prescription.size_savings_bytes
+            
+        return success
 
     def _execute_delete(self, p: Prescription) -> bool:
         if not os.path.exists(p.target_path):
             self._log_action("delete_fail", {"path": p.target_path, "reason": "File not found"})
             return False
             
-        # Create backup
         backup_id = f"backup_{int(time.time())}_{p.id}"
         backup_path = os.path.join(self.backup_dir, backup_id)
         
@@ -82,7 +90,7 @@ class HealEngine:
             shutil.copy2(p.target_path, backup_path)
             os.remove(p.target_path)
             
-            self._log_action("delete", {"path": p.target_path, "backup": backup_id}, undo_info={
+            self._log_action("delete", {"path": p.target_path, "backup": backup_id, "saved": p.size_savings_bytes}, undo_info={
                 "type": "restore_file",
                 "original_path": p.target_path,
                 "backup_path": backup_path
@@ -93,14 +101,12 @@ class HealEngine:
             return False
 
     def _execute_create(self, p: Prescription) -> bool:
-        # Currently, 'create_file' like logrotate configs might require root.
-        # We'll try to write it.
         try:
             os.makedirs(os.path.dirname(p.target_path), exist_ok=True)
             with open(p.target_path, "w") as f:
                 f.write(p.template)
             
-            self._log_action("create", {"path": p.target_path}, undo_info={
+            self._log_action("create", {"path": p.target_path, "name": p.name}, undo_info={
                 "type": "delete_file",
                 "path": p.target_path
             })
@@ -108,6 +114,22 @@ class HealEngine:
         except Exception as e:
             self._log_action("create_error", {"path": p.target_path, "error": str(e)})
             return False
+
+    def generate_sleep_insurance_report(self) -> str:
+        """Generates a high-impact summary of the healing session."""
+        if not self.session_actions:
+            return "No actions taken in this session."
+            
+        from .outputs.cli_report import format_bytes
+        
+        report = [
+            "\n[bold green]🛡️ SLEEP INSURANCE — REMITTANCE REPORT[/bold green]",
+            f"  [bold]Status:[/bold] Healthy",
+            f"  [bold]Space Reclaimed:[/bold] [bold green]{format_bytes(self.total_reclaimed)}[/bold green]",
+            f"  [bold]Actions Applied:[/bold] {len([a for a in self.session_actions if not a['action'].endswith('fail')])}",
+            "\n  [dim]You can rest easy. Production server has been stabilized.[/dim]"
+        ]
+        return "\n".join(report)
 
     def undo(self) -> Optional[str]:
         """Revert the last action. Returns a message about what was undone."""

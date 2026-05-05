@@ -106,6 +106,26 @@ class Database:
         results.reverse()
         return results
 
+    def get_snapshot_closest_to(self, mountpoint: str, target_timestamp: float) -> Optional[Dict]:
+        """Returns the snapshot ID and directory metrics closest to the target timestamp."""
+        cursor = self._conn.cursor()
+        cursor.execute(
+            "SELECT id, timestamp FROM snapshots "
+            "WHERE mountpoint = ? ORDER BY ABS(timestamp - ?) ASC LIMIT 1",
+            (mountpoint, target_timestamp)
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+            
+        snapshot_id, ts = row
+        cursor.execute(
+            "SELECT path, size_bytes FROM directory_metrics WHERE snapshot_id = ?",
+            (snapshot_id,)
+        )
+        metrics = {row[0]: row[1] for row in cursor.fetchall()}
+        return {"snapshot_id": snapshot_id, "timestamp": ts, "metrics": metrics}
+
     def close(self):
         if self._conn:
             self._conn.close()

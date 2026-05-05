@@ -1,6 +1,6 @@
 import psutil
 import os
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from dataclasses import dataclass
 
 @dataclass
@@ -60,3 +60,48 @@ class ProcessMapper:
                     break  # Found one file match, move to next process
                 
         return culprits
+
+    def get_application_accounting(self, directory_path: str) -> List[Dict[str, Any]]:
+        """
+        Aggregates total size of open files by process name within the given directory.
+        Answers "Which application is using how much?"
+        """
+        if self._process_cache is None:
+            self._build_cache()
+
+        app_sizes = {}
+        directory_path = os.path.abspath(directory_path)
+        if os.name == 'nt':
+            directory_path = directory_path.lower()
+            
+        for pid, info in self._process_cache.items():
+            proc_name = info['name']
+            proc_size = 0
+            
+            for fpath in info['paths']:
+                compare_path = fpath.lower() if os.name == 'nt' else fpath
+                if compare_path.startswith(directory_path):
+                    try:
+                        # Only count files that still exist and we can stat
+                        proc_size += os.path.getsize(fpath)
+                    except Exception:
+                        pass
+                        
+            if proc_size > 0:
+                if proc_name in app_sizes:
+                    app_sizes[proc_name]['size'] += proc_size
+                    app_sizes[proc_name]['pids'].append(pid)
+                else:
+                    app_sizes[proc_name] = {'size': proc_size, 'pids': [pid]}
+                    
+        # Convert to list and sort by size descending
+        result = []
+        for name, data in app_sizes.items():
+            result.append({
+                'name': name,
+                'total_bytes': data['size'],
+                'pids': data['pids']
+            })
+            
+        result.sort(key=lambda x: x['total_bytes'], reverse=True)
+        return result

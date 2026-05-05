@@ -88,155 +88,123 @@ def render_diagnosis(path: str,
                       trends: List[dict] = None,
                       prescriptions: List[Prescription] = None,
                       anomalies: List[str] = None,
-                      prediction = None):
+                      prediction = None,
+                      app_accounting: List[dict] = None):
     
     trend_info = {t['path']: t for t in trends} if trends else {}
     
-    # ── HEADER ────────────────────────────────────────────
-    header_parts = []
+    # ── HEADER ───────────────────────────────────────────
+    console.print()
+    console.print(Panel(
+        Text.from_markup(f"[bold white]🩺 DISK INTELLIGENCE REPORT[/bold white]\n[dim]{path}[/dim]"),
+        box=ROUNDED,
+        style="blue",
+        expand=False
+    ))
+
+    # ── 1. ACTION HEADER (PRESCRIPTION FIRST) ────────────────
+    if prescriptions:
+        p = prescriptions[0]  # Focus on the most impactful action
+        total_savings = sum(pr.size_savings_bytes for pr in prescriptions)
+        
+        action_text = Text.from_markup(
+            f"  [bold red]🔥 ACTION REQUIRED[/bold red]\n"
+            f"  [bold]Primary Fix:[/bold] [yellow]{p.name}[/yellow]\n"
+            f"  [dim]Reclaim {format_bytes(total_savings)} across {len(prescriptions)} items.[/dim]\n"
+            f"  [bold]Run:[/bold] [white on red] dxcli heal [/white on red]"
+        )
+        console.print(Panel(action_text, box=DOUBLE, border_style="red", padding=(1, 2)))
+    
+    # ── 2. MINIMALIST STATUS ───────────────────────────────
     if partition:
-        bar, label, color = severity_bar(partition.usage_percent)
+        bar, label, color = severity_bar(partition.usage_percent, width=24)
         
         pred_str = ""
         if prediction and prediction.days_until_full is not None:
             days = prediction.days_until_full
-            if days < 1:
-                pred_str = f"Full in [bold red]{days*24:.0f}h[/bold red]"
-            elif days < 7:
-                d = int(days)
-                h = int((days - d) * 24)
-                pred_str = f"Full in [bold red]{d}d {h}h[/bold red]"
+            if days < 7:
+                pred_str = f"🆘 Full in [bold blink red]{days:.1f} days[/bold blink red]"
             else:
-                pred_str = f"Full in [bold yellow]{days:.0f} days[/bold yellow]"
+                pred_str = f"⏰ Full in [bold yellow]{days:.0f} days[/bold yellow]"
         else:
-            pred_str = "[green]Not growing[/green]"
-        
-        header = Text.from_markup(
-            f"  [bold]dxcli — Disk Diagnosis[/bold]"
-            f"{'':>20}"
-            f"{partition.mountpoint}  {partition.usage_percent:.0f}%\n"
-            f"  {bar}  [{color}]{label}[/{color}] — {pred_str}"
+            pred_str = "[dim]Growth stable[/dim]"
+            
+        status_line = Text.from_markup(
+            f"  [bold cyan]Partition:[/bold cyan] {partition.mountpoint:<6} [bold white]{partition.usage_percent:>3.0f}%[/bold white] {bar} {pred_str}"
         )
-    else:
-        header = Text.from_markup(f"  [bold]dxcli — Disk Diagnosis[/bold]  {path}")
+        console.print(status_line)
     
-    console.print()
-    console.print(Panel(header, box=DOUBLE, style="bold blue"))
-    
-    # ── ROOT CAUSE ──────────────────────────────────────
+    # ── 3. DIAGNOSTIC NARRATIVE ───────────────────────────
     if trends and len(trends) > 0:
-        # Find the fastest-growing directory
         fastest = max(trends, key=lambda t: t.get('velocity_per_day', 0))
         vel = fastest.get('velocity_per_day', 0)
         
-        if vel > 1024 * 1024:  # > 1MB/day growth
+        if vel > 1024 * 1024:  # > 1MB/day
             culprit = fastest.get('culprit')
-            proc_str = f" (written by [bold]{culprit.name}[/bold])" if culprit else ""
+            proc_str = f" ([bold magenta]PID {culprit.pid} - {culprit.name}[/bold magenta])" if culprit else ""
             
-            # Check if it's an unrotated log
-            log_match = None
-            for log in logs:
-                if log.path.startswith(fastest['path']):
-                    log_match = log
-                    break
-            
-            cause_lines = f"  [bold red]🔴 ROOT CAUSE IDENTIFIED[/bold red]\n"
-            if log_match and not log_match.has_logrotate_config:
-                cause_lines += f"  {fastest['path']} — {format_bytes(fastest['current_size'])} (no rotation configured){proc_str}\n"
-            else:
-                cause_lines += f"  {fastest['path']} — {format_bytes(fastest['current_size'])}{proc_str}\n"
-            cause_lines += f"  Growing at {format_bytes(vel)}/day"
-            
-            console.print(Panel(Text.from_markup(cause_lines), box=ROUNDED, border_style="red"))
-    
-    # ── ANOMALY ALERTS ──────────────────────────────────
+            console.print(f"\n  [bold red]●[/bold red] [bold underline]Primary Culprit:[/bold underline] {os.path.basename(fastest['path'])}")
+            console.print(f"    [dim]{fastest['path']}[/dim]")
+            console.print(f"    ↳ Growing at [bold red]{format_bytes(vel)}/day[/bold red]{proc_str}")
+
+    # ── 4. SENTINEL ALERTS ────────────────────────────────
     if anomalies:
         for a in anomalies:
             console.print(f"  [bold red]⚠ SENTINEL:[/bold red] {a}")
-        console.print()
     
-    # ── TOP CONSUMERS TABLE ─────────────────────────────
+    # ── 5. CONSUMER INSIGHTS ──────────────────────────────
     table = Table(
-        title="TOP CONSUMERS", 
         box=ROUNDED,
         show_header=True, 
-        header_style="bold white",
-        border_style="blue",
-        title_style="bold blue",
-        pad_edge=True,
-        expand=True
+        header_style="bold cyan",
+        border_style="dim",
+        expand=True,
+        padding=(0, 1),
+        title="\n[dim]Top Storage Consumers[/dim]",
     )
-    table.add_column("Path", style="cyan", no_wrap=True, max_width=40, ratio=4)
-    table.add_column("Size", justify="right", style="bold white", no_wrap=True, ratio=1)
-    table.add_column("Growth/Day", justify="right", no_wrap=True, ratio=1)
-    table.add_column("Trend", justify="center", no_wrap=True, ratio=2)
-    table.add_column("Process", style="dim", no_wrap=True, ratio=2)
+    table.add_column("Path", style="white", no_wrap=True, ratio=4)
+    table.add_column("Size", justify="right", style="bold white", ratio=1)
+    table.add_column("Trend", justify="center", ratio=2)
     
-    for d in top_dirs[:8]:
+    for d in top_dirs[:5]:
         info = trend_info.get(d.path, {})
         vel = info.get('velocity_per_day', 0)
-        culprit = info.get('culprit')
-        proc_str = f"{culprit.name}" if culprit else "-"
-        
-        # Growth rate with color
-        if vel > 1024 * 1024 * 50:
-            growth_str = f"[bold red]+{format_bytes(vel)}/d[/bold red]"
-        elif vel > 1024 * 1024:
-            growth_str = f"[yellow]+{format_bytes(vel)}/d[/yellow]"
-        elif vel > 0:
-            growth_str = f"[green]+{format_bytes(vel)}/d[/green]"
-        else:
-            growth_str = f"[dim]0 B/d[/dim]"
-        
-        # Sparkline + label
         spark = sparkline_str(info.get('history', []))
         label = trend_label(vel)
-        trend_display = f"{spark} {label}"
         
-        table.add_row(d.path, format_bytes(d.size_bytes), growth_str, trend_display, proc_str)
+        # Truncate long paths for the table
+        display_path = d.path
+        if len(display_path) > 40:
+            display_path = "..." + display_path[-37:]
+            
+        table.add_row(display_path, format_bytes(d.size_bytes), f"{spark} {label}")
         
     console.print(table)
     
-    # ── PRESCRIPTIONS ───────────────────────────────────
-    if prescriptions:
-        presc_table = Table(
-            title="💊 PRESCRIPTIONS",
+    # ── 5.5 APPLICATION FOOTPRINT ──────────────────────────
+    if app_accounting:
+        app_table = Table(
             box=ROUNDED,
             show_header=True,
-            header_style="bold white",
-            border_style="yellow",
-            title_style="bold yellow",
-            expand=True
+            header_style="bold magenta",
+            border_style="dim",
+            expand=True,
+            padding=(0, 1),
+            title="\n[dim]Top Storage Consumers by Application (Open Files)[/dim]"
         )
-        presc_table.add_column("#", style="bold yellow", width=3)
-        presc_table.add_column("Action", style="white", ratio=5)
-        presc_table.add_column("Risk", justify="center", ratio=1)
-        presc_table.add_column("Est. Savings", justify="right", style="bold green", ratio=1)
+        app_table.add_column("Application (Process)", style="white", ratio=3)
+        app_table.add_column("Active Footprint", justify="right", style="bold white", ratio=1)
         
-        total_savings = 0
-        for i, p in enumerate(prescriptions, 1):
-            risk_color = "green" if p.risk == "safe" else "yellow"
-            presc_table.add_row(
-                f"[{i}]", 
-                p.name, 
-                f"[{risk_color}]{p.risk}[/{risk_color}]",
-                f"-{format_bytes(p.size_savings_bytes)}"
-            )
-            total_savings += p.size_savings_bytes
+        for app in app_accounting[:5]:
+            pids_str = ', '.join(map(str, app['pids'][:3]))
+            if len(app['pids']) > 3:
+                pids_str += ", ..."
+            app_table.add_row(f"{app['name']} [dim](PIDs: {pids_str})[/dim]", format_bytes(app['total_bytes']))
             
-        console.print(presc_table)
-        console.print(f"  [bold green]Total recoverable: {format_bytes(total_savings)}[/bold green]")
+        console.print(app_table)
     
-    # ── PROBLEMS (logs/stales not in prescriptions) ─────
-    if not prescriptions and (logs or stales):
-        console.print(f"\n  [bold red]⚠ PROBLEMS FOUND[/bold red]")
-        for log in logs[:5]:
-            rot_str = ", [bold red]NO ROTATION[/bold red]" if not log.has_logrotate_config else ""
-            console.print(f"  [LOG] {log.path} — {format_bytes(log.size_bytes)}{rot_str}")
-        for stale in stales[:5]:
-            console.print(f"  [STALE] {stale.path} — {format_bytes(stale.size_bytes)}, {stale.days_stale:.0f}d old")
-    
+    # ── 6. ALL CLEAR FOOTER ──────────────────────────────
     if not prescriptions and not logs and not stales:
-        console.print(f"\n  [bold green]✅ ALL CLEAR — No issues found.[/bold green]")
+        console.print(f"  [bold green]✅ ALL CLEAR[/bold green] — No immediate threats detected.")
     
     console.print()

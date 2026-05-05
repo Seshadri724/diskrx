@@ -1,0 +1,24 @@
+# dxcli Disk Policies — Disk Policy as Code (HashiCorp Style)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+rules:
+  # Ensure logs don't explode
+  - name: Global Log Limit
+    type: limit
+    path: /var/log
+    max_size_gb: 10
+    action: Add logrotate config or purge old logs
+
+  # Cleanup temporary files
+  - name: Stale Tmp Cleanup
+    type: stale
+    path: /tmp
+    max_age_days: 7
+    action: Safe to delete
+
+  # Database Backup Policy
+  - name: Archive Database Backups
+    type: stale
+    path: /backups
+    max_age_days: 90
+    action: Move to S3/Glacier
