@@ -1,5 +1,6 @@
 import os
 import time
+from html import escape
 from typing import List
 from ..store.models import Partition, DirNode, Prescription, UnrotatedLog, StaleFile
 from .cli_report import format_bytes
@@ -121,7 +122,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🩺 dxcli Disk Intelligence Report</h1>
+            <h1>dxcli Disk Intelligence Report</h1>
             <div class="path">{path}</div>
             <div style="font-size: 0.875rem; color: var(--text-muted); margin-top: 0.5rem;">
                 Generated on {timestamp}
@@ -179,16 +180,19 @@ def generate_html_report(out_path: str, path: str, partition: Partition, top_dir
                          prescriptions: List[Prescription] = None, prediction=None):
     
     trend_info = {t['path']: t for t in trends} if trends else {}
+    html_path = escape(os.path.abspath(path), quote=True)
+    html_mountpoint = escape(partition.mountpoint, quote=True) if partition else "Unknown"
 
     # Action Section
     action_section = ""
     if prescriptions:
         p = prescriptions[0]
         total_savings = sum(pr.size_savings_bytes for pr in prescriptions)
+        prescription_name = escape(p.name, quote=True)
         action_section = f"""
         <div class="card action-required">
-            <h2 class="danger-text" style="border: none; padding: 0;">🔥 ACTION REQUIRED</h2>
-            <p><strong>Primary Fix:</strong> {p.name}</p>
+            <h2 class="danger-text" style="border: none; padding: 0;">[!] ACTION REQUIRED</h2>
+            <p><strong>Primary Fix:</strong> {prescription_name}</p>
             <p><strong>Potential Savings:</strong> {format_bytes(total_savings)}</p>
             <div class="code-block">dxcli heal</div>
         </div>
@@ -214,11 +218,16 @@ def generate_html_report(out_path: str, path: str, partition: Partition, top_dir
         
         if vel > 1024 * 1024:
             culprit = fastest.get('culprit')
-            proc_str = f" (PID {culprit.pid} - {culprit.name})" if culprit else ""
+            proc_str = (
+                f" (PID {escape(str(culprit.pid), quote=True)} - {escape(culprit.name, quote=True)})"
+                if culprit
+                else ""
+            )
+            culprit_path = escape(str(fastest.get('path', '')), quote=True)
             culprit_section = f"""
             <div class="card">
                 <h2>Primary Culprit</h2>
-                <p class="mono">{fastest['path']}</p>
+                <p class="mono">{culprit_path}</p>
                 <p>Growing at <strong class="danger-text">{format_bytes(vel)}/day</strong>{proc_str}</p>
             </div>
             """
@@ -229,19 +238,20 @@ def generate_html_report(out_path: str, path: str, partition: Partition, top_dir
         info = trend_info.get(d.path, {})
         vel = info.get('velocity_per_day', 0)
         vel_str = f"{format_bytes(vel)}/day" if vel > 0 else "-"
+        row_path = escape(d.path, quote=True)
         consumers_rows += f"""
         <tr>
-            <td>{d.path}</td>
+            <td>{row_path}</td>
             <td class="text-right">{format_bytes(d.size_bytes)}</td>
             <td class="text-right">{vel_str}</td>
         </tr>
         """
 
     html = HTML_TEMPLATE.format(
-        path=os.path.abspath(path),
+        path=html_path,
         timestamp=time.strftime('%Y-%m-%d %H:%M:%S'),
         action_section=action_section,
-        mountpoint=partition.mountpoint if partition else "Unknown",
+        mountpoint=html_mountpoint,
         usage_percent=f"{partition.usage_percent:.1f}" if partition else "0",
         forecast=forecast,
         forecast_class=forecast_class,

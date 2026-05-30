@@ -1,5 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
+
 
 @dataclass
 class Partition:
@@ -16,11 +17,13 @@ class Partition:
             return 0.0
         return (self.used_bytes / self.total_bytes) * 100.0
 
+
 @dataclass
 class DirNode:
     path: str
     size_bytes: int
     file_count: int
+
 
 @dataclass
 class UnrotatedLog:
@@ -29,6 +32,7 @@ class UnrotatedLog:
     last_modified_timestamp: float
     has_logrotate_config: bool
 
+
 @dataclass
 class StaleFile:
     path: str
@@ -36,10 +40,12 @@ class StaleFile:
     last_accessed_timestamp: float
     days_stale: float
 
+
 @dataclass
 class GrowthRate:
     path: str
     bytes_per_day: float
+
 
 @dataclass
 class PredictionResult:
@@ -50,16 +56,27 @@ class PredictionResult:
     current_usage_bytes: int
     daily_growth_bytes: float
     is_accelerating: bool
+    days_until_full_low: Optional[float] = None
+    days_until_full_high: Optional[float] = None
+    hint: Optional[str] = None
+
+
 
 @dataclass
 class Prescription:
+    """Represents an actionable recommendation from the analysis engine."""
     id: str
     name: str
-    template: str
-    risk: str
+    description: str
+    category: str
+    severity: str         # 'low', 'medium', 'high', 'critical'
     size_savings_bytes: int
-    action_type: Optional[str] = None  # e.g., 'delete', 'create_file'
+    action_type: Optional[str] = None    # 'delete', 'create_file', 'command'
     target_path: Optional[str] = None
+    template: Optional[str] = None       # Content to write for 'create_file'
+    risk: str = "low"                    # 'low', 'medium', 'high'
+    is_safe: bool = True
+
 
 @dataclass
 class PolicyViolation:
@@ -68,3 +85,42 @@ class PolicyViolation:
     message: str
     severity: str  # 'info', 'warning', 'critical'
     suggested_action: str
+
+
+@dataclass
+class RiskSignal:
+    """A single explainable storage risk finding for fleet telemetry."""
+    id: str
+    severity: str
+    category: str
+    message: str
+    path: Optional[str] = None
+    owner: Optional[str] = None
+    score: int = 0
+
+
+@dataclass
+class CollectorError:
+    """A non-fatal collector failure included in fleet telemetry."""
+    collector: str
+    message: str
+
+
+@dataclass
+class HostSnapshot:
+    """Fleet-ready telemetry emitted by a local dxcli agent run."""
+    schema_version: str
+    host_id: str
+    hostname: str
+    platform: str
+    timestamp: float
+    scan_path: str
+    partitions: List[Partition]
+    top_dirs: List[DirNode]
+    logs: List[UnrotatedLog]
+    stales: List[StaleFile]
+    policy_violations: List[PolicyViolation]
+    risk_signals: List[RiskSignal]
+    risk_score: int
+    risk_level: str
+    collector_errors: List[CollectorError] = field(default_factory=list)

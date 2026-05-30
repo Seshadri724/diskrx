@@ -3,15 +3,15 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "diskrx"
-version = "0.1.2"
+name = "dxcli"
+version = "0.3.0"
 description = "Intelligent disk diagnostics and storage observability for SREs"
 authors = [
     {name = "Seshadri Naidu Vangapandu", email = "seshuvangapandu@gmail.com"}
 ]
 license = "MIT"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.8"
 keywords = ["disk", "diagnostics", "sre", "observability", "storage", "cli"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -19,6 +19,8 @@ classifiers = [
     "Intended Audience :: System Administrators",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -38,6 +40,9 @@ dependencies = [
 test = [
     "pytest>=7.0.0",
     "pytest-mock>=3.10.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "bandit>=1.7.0",
 ]
 
 [project.urls]

@@ -3,4 +3,9 @@ dxcli
 Intelligent disk diagnostics for SREs.
 """
 
-__version__ = "0.1.0"
+from importlib.metadata import version, PackageNotFoundError
+try:
+    __version__ = version("dxcli")
+except PackageNotFoundError:
+    __version__ = "0.0.0+local"
+

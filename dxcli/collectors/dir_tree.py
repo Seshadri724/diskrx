@@ -5,16 +5,22 @@ from ..store.models import DirNode
 
 class DirectoryTreeCollector:
     """
-    Dyson-Level Scanner: High-concurrency BFS directory scanner.
-    Optimized for pure Python performance by parallelizing I/O-bound stat calls.
+    High-concurrency directory scanner.
+    Parallelizes stat calculations by submitting one worker per top-level child directory.
+    For deeper parallelism, increase the number of top-level children or restructure the scan.
     """
-    def __init__(self, max_threads: int = 64):
+    def __init__(self, max_threads: int = None, max_depth: int = None):
+        if max_threads is None:
+            max_threads = min(16, (os.cpu_count() or 4) * 2)
         self.max_threads = max_threads
+        self.max_depth = max_depth
 
-    def scan(self, root_path: str, max_depth: int = 3) -> List[DirNode]:
+
+    def scan(self, root_path: str) -> List[DirNode]:
         """
         Scans top-level directories of root_path to identify storage consumers.
-        Deep-scans subdirectories in parallel.
+        Deep-scans each top-level child directory in a separate thread.
+        If max_depth is set, descends at most that many levels below root_path.
         """
         results = []
         try:
@@ -27,7 +33,12 @@ class DirectoryTreeCollector:
         
         # Parallelize the heavy lifting of calculating sizes for each top-level dir
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_threads) as executor:
-            future_to_path = {executor.submit(self._calculate_dir_stats, d.path): d.path for d in target_dirs}
+            # Each top-level child starts at depth=1
+            remaining_depth = (self.max_depth - 1) if self.max_depth is not None else None
+            future_to_path = {
+                executor.submit(self._calculate_dir_stats, d.path, remaining_depth): d.path
+                for d in target_dirs
+            }
             for future in concurrent.futures.as_completed(future_to_path):
                 try:
                     size, count = future.result()
@@ -40,17 +51,18 @@ class DirectoryTreeCollector:
         results.sort(key=lambda x: x.size_bytes, reverse=True)
         return results
 
-    def _calculate_dir_stats(self, root_dir: str) -> Tuple[int, int]:
+    def _calculate_dir_stats(self, root_dir: str, remaining_depth: int = None) -> Tuple[int, int]:
         """
-        Iterative parallelized/high-speed directory stat collector.
-        Uses os.scandir and stack to avoid recursion overhead.
+        Iterative directory stat collector using os.scandir and a stack.
+        If remaining_depth is not None, limits recursion to that many additional levels.
         """
         total_size = 0
         total_count = 0
-        stack = [root_dir]
+        # Stack entries: (directory_path, remaining_depth)
+        stack = [(root_dir, remaining_depth)]
         
         while stack:
-            current_dir = stack.pop()
+            current_dir, depth_left = stack.pop()
             try:
                 with os.scandir(current_dir) as entries:
                     for entry in entries:
@@ -59,7 +71,12 @@ class DirectoryTreeCollector:
                                 continue
                             
                             if entry.is_dir():
-                                stack.append(entry.path)
+                                # Only descend if depth allows
+                                if depth_left is None:
+                                    stack.append((entry.path, None))
+                                elif depth_left > 0:
+                                    stack.append((entry.path, depth_left - 1))
+                                # else: depth exhausted, skip this subdirectory
                             else:
                                 total_size += entry.stat(follow_symlinks=False).st_size
                                 total_count += 1
@@ -69,3 +86,4 @@ class DirectoryTreeCollector:
                 continue
                 
         return total_size, total_count
+

@@ -20,11 +20,15 @@ class DockerAnalyzer:
             prescriptions.append(Prescription(
                 id="docker_images",
                 name="Prune dangling Docker images",
+                description="Prune reclaimable Docker images.",
+                category="docker",
+                severity="medium",
                 template="docker image prune -f",
                 risk="safe",
                 size_savings_bytes=img_reclaimable,
-                action_type="run_command",
-                target_path=None
+                action_type="manual",
+                target_path=None,
+                is_safe=False,
             ))
 
         # 2. Build Cache
@@ -34,11 +38,15 @@ class DockerAnalyzer:
             prescriptions.append(Prescription(
                 id="docker_build_cache",
                 name="Prune Docker build cache",
+                description="Prune reclaimable Docker build cache.",
+                category="docker",
+                severity="medium",
                 template="docker builder prune -f",
                 risk="safe",
                 size_savings_bytes=bc_reclaimable,
-                action_type="run_command",
-                target_path=None
+                action_type="manual",
+                target_path=None,
+                is_safe=False,
             ))
 
         # 3. Local Volumes
@@ -50,11 +58,15 @@ class DockerAnalyzer:
             prescriptions.append(Prescription(
                 id="docker_volumes",
                 name="Prune unused Docker volumes",
+                description="Prune reclaimable unused Docker volumes.",
+                category="docker",
+                severity="high",
                 template="docker volume prune -f",
                 risk="needs-review",
                 size_savings_bytes=vol_reclaimable,
-                action_type="run_command",
-                target_path=None
+                action_type="manual",
+                target_path=None,
+                is_safe=False,
             ))
 
         return prescriptions

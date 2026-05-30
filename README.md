@@ -11,8 +11,8 @@
 Standard tools like `du`, `ncdu`, or `dust` are excellent "viewers." They show you the current state of your disk. `dxcli` is a **decision engine**. It adds an intelligence layer that:
 
 1.  **Attributes Growth**: Correlates growing directories with active processes (PIDs).
-2.  **Predicts Time-to-Full**: Uses historical data and linear regression to forecast when a disk will be exhausted.
-3.  **Detects Anomalies**: Identifies "log bombs" and persistent leaks using behavioral fingerprinting.
+2.  **Predicts Time-to-Full**: Estimates time-to-full via linear regression on recent history; reports acceleration when short-term growth diverges from long-term.
+3.  **Detects Anomalies**: Identifies "log bombs" and persistent leaks using statistical anomaly detection (z-score + threshold).
 4.  **Prescribes Remediation**: Generates actionable fixes (like logrotate configs) with an automated "Heal Engine" and full undo support.
 
 ---
@@ -26,7 +26,7 @@ dxcli diagnose /var
 ```
 
 ### 📈 Predictive Forecasting
-Learns your server's "metabolism" over time to predict exactly when you'll run out of space.
+Estimates time-to-full via linear regression on recent history; reports acceleration when short-term growth diverges from long-term.
 ```bash
 dxcli predict /
 ```
@@ -42,15 +42,26 @@ Background monitoring that alerts you to sudden spikes (log bombs) or slow, stea
 
 ---
 
+## 🔐 Security & Production Trust
+
+`dxcli` is built for high-compliance production environments. We follow a "Secure by Default" philosophy:
+
+- **Minimal Surface Area**: Local plugins are **opt-in only** (`--enable-plugins`). We never execute untrusted code by default.
+- **Atomic State**: All historical data and configuration updates are performed atomically to prevent corruption during system crashes.
+- **Zero-Trust Healing**: The `heal` engine enforces strict directory scoping and rejects symlink traversal, ensuring remediation stays where you intended.
+- **Hardened Permissions**: The `~/.dx` directory is locked down with `0700` permissions, and sensitive data (like `history.db`) is stored with `0600`.
+- **Systemd Sandboxing**: Background services are designed to run with `NoNewPrivileges` and `ProtectSystem=strict`.
+
+---
+
 ## Installation
 
 ```bash
-pip install diskrx
+pip install dxcli
 ```
 
-Requires Python 3.10+.
 
----
+Requires Python 3.8+. For production deployments, we recommend using the `generate-service` command to create a hardened systemd unit.
 
 ## Development & Philosophy
 
@@ -72,6 +83,11 @@ python -m venv venv
 # On Windows: venv\Scripts\activate
 # On Linux: source venv/bin/activate
 pip install -e ".[test]"
+
+# Run quality gates
+black dxcli
+flake8 dxcli
+bandit -r dxcli
 pytest
 ```
 

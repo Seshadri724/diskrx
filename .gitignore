@@ -161,8 +161,12 @@ history.db
 history.db-journal
 .dx/
 
-*.md
-
-!*README.md
+# Project-specific internal docs (not for distribution)
+AGENT_BUILD_BRIEF.md
+BUGS_AND_ROADMAP.md
+DEBUG_LOG.md
+COMMANDS_PLAYBOOK.md
 
 diskrx-0.1.0/
+my_report.html
+test_report.html

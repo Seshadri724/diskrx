@@ -8,6 +8,8 @@ class ProcessRef:
     pid: int
     name: str
     cmdline: List[str]
+    mode: str = "unknown"
+    files: List[str] = None
 
 class ProcessMapper:
     """
@@ -18,23 +20,29 @@ class ProcessMapper:
         self._process_cache: Optional[Dict[int, List[str]]] = None
 
     def _build_cache(self):
-        """Scan all processes once and cache their open file paths."""
+        """Scan all processes once and cache their open file paths and modes."""
         self._process_cache = {}
         for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
             try:
                 files = proc.open_files()
                 if files:
+                    paths = []
+                    modes = []
+                    for f in files:
+                        paths.append(f.path)
+                        modes.append(getattr(f, 'mode', 'unknown'))
                     self._process_cache[proc.info['pid']] = {
                         'name': proc.info['name'],
                         'cmdline': proc.info['cmdline'] or [],
-                        'paths': [f.path for f in files]
+                        'paths': paths,
+                        'modes': modes
                     }
             except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
                 continue
             except Exception:
                 continue
 
-    def find_culprits(self, directory_path: str) -> List[ProcessRef]:
+    def find_culprits(self, directory_path: str, write_only: bool = True) -> List[ProcessRef]:
         """
         Returns a list of processes that currently have files open in the target directory.
         Builds cache on first call, reuses for subsequent calls.
@@ -47,21 +55,45 @@ class ProcessMapper:
         # Case-insensitive on Windows
         if os.name == 'nt':
             directory_path = directory_path.lower()
+        # Ensure path boundary check (avoid /var/log matching /var/logbomb)
+        dir_with_sep = directory_path.rstrip(os.sep) + os.sep
         
         for pid, info in self._process_cache.items():
-            for fpath in info['paths']:
+            matched_files = []
+            matched_modes = []
+            for fpath, fmode in zip(info['paths'], info['modes']):
                 compare_path = fpath.lower() if os.name == 'nt' else fpath
-                if compare_path.startswith(directory_path):
-                    culprits.append(ProcessRef(
-                        pid=pid,
-                        name=info['name'],
-                        cmdline=info['cmdline']
-                    ))
-                    break  # Found one file match, move to next process
+                if compare_path == directory_path or compare_path.startswith(dir_with_sep):
+                    is_writer = False
+                    if fmode == 'unknown':
+                        is_writer = True
+                    else:
+                        if 'w' in fmode or 'a' in fmode or '+' in fmode:
+                            is_writer = True
+                    
+                    if not write_only or is_writer:
+                        matched_files.append(fpath)
+                        matched_modes.append(fmode)
+            
+            if matched_files:
+                if all(m == 'unknown' for m in matched_modes):
+                    mode_tag = "unavailable"
+                elif any('w' in m or 'a' in m or '+' in m for m in matched_modes):
+                    mode_tag = "write"
+                else:
+                    mode_tag = "read"
+                
+                culprits.append(ProcessRef(
+                    pid=pid,
+                    name=info['name'],
+                    cmdline=info['cmdline'],
+                    mode=mode_tag,
+                    files=matched_files
+                ))
                 
         return culprits
 
-    def get_application_accounting(self, directory_path: str) -> List[Dict[str, Any]]:
+    def get_application_accounting(self, directory_path: str, write_only: bool = True) -> List[Dict[str, Any]]:
         """
         Aggregates total size of open files by process name within the given directory.
         Answers "Which application is using how much?"
@@ -73,19 +105,29 @@ class ProcessMapper:
         directory_path = os.path.abspath(directory_path)
         if os.name == 'nt':
             directory_path = directory_path.lower()
+        # Ensure path boundary check (avoid /var/log matching /var/logbomb)
+        dir_with_sep = directory_path.rstrip(os.sep) + os.sep
             
         for pid, info in self._process_cache.items():
             proc_name = info['name']
             proc_size = 0
             
-            for fpath in info['paths']:
+            for fpath, fmode in zip(info['paths'], info['modes']):
                 compare_path = fpath.lower() if os.name == 'nt' else fpath
-                if compare_path.startswith(directory_path):
-                    try:
-                        # Only count files that still exist and we can stat
-                        proc_size += os.path.getsize(fpath)
-                    except Exception:
-                        pass
+                if compare_path == directory_path or compare_path.startswith(dir_with_sep):
+                    is_writer = False
+                    if fmode == 'unknown':
+                        is_writer = True
+                    else:
+                        if 'w' in fmode or 'a' in fmode or '+' in fmode:
+                            is_writer = True
+                    
+                    if not write_only or is_writer:
+                        try:
+                            # Only count files that still exist and we can stat
+                            proc_size += os.path.getsize(fpath)
+                        except Exception:
+                            pass
                         
             if proc_size > 0:
                 if proc_name in app_sizes:
@@ -105,3 +147,70 @@ class ProcessMapper:
             
         result.sort(key=lambda x: x['total_bytes'], reverse=True)
         return result
+
+    def get_active_writers(self, directory_path: str, interval: float = 1.0) -> List[Dict[str, Any]]:
+        """
+        Samples open files over an interval to identify which processes are 
+        actively writing (throughput detection).
+        """
+        import time
+        
+        if self._process_cache is None:
+            self._build_cache()
+            
+        directory_path = os.path.abspath(directory_path)
+        if os.name == 'nt':
+            directory_path = directory_path.lower()
+        # Ensure path boundary check (avoid /var/log matching /var/logbomb)
+        dir_with_sep = directory_path.rstrip(os.sep) + os.sep
+
+        # Phase 1: Capture initial sizes
+        initial_stats = {}
+        for pid, info in self._process_cache.items():
+            for fpath in info['paths']:
+                compare_path = fpath.lower() if os.name == 'nt' else fpath
+                if compare_path == directory_path or compare_path.startswith(dir_with_sep):
+                    try:
+                        initial_stats[(pid, fpath)] = os.path.getsize(fpath)
+                    except Exception:
+                        continue
+
+        if not initial_stats:
+            return []
+
+        # Wait for interval
+        time.sleep(interval)
+
+        # Phase 2: Capture final sizes and calculate delta
+        active_writers = {}
+        for (pid, fpath), initial_size in initial_stats.items():
+            try:
+                final_size = os.path.getsize(fpath)
+                delta = final_size - initial_size
+                if delta > 0:
+                    proc_name = self._process_cache[pid]['name']
+                    if pid not in active_writers:
+                        active_writers[pid] = {
+                            'name': proc_name,
+                            'throughput_bps': delta / interval,
+                            'files': [fpath]
+                        }
+                    else:
+                        active_writers[pid]['throughput_bps'] += delta / interval
+                        active_writers[pid]['files'].append(fpath)
+            except Exception:
+                continue
+
+        # Convert to sorted list
+        result = []
+        for pid, data in active_writers.items():
+            result.append({
+                'pid': pid,
+                'name': data['name'],
+                'throughput_bps': data['throughput_bps'],
+                'files': data['files']
+            })
+            
+        result.sort(key=lambda x: x['throughput_bps'], reverse=True)
+        return result
+

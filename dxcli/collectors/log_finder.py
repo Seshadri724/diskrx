@@ -1,12 +1,18 @@
 import os
 from typing import List
 from ..store.models import UnrotatedLog
-from ..config import DEFAULT_CONFIG
+from ..config import get_config
 import time
 
 class LogFinderCollector:
-    def __init__(self, config=DEFAULT_CONFIG):
-        self.config = config
+    def __init__(self, config=None):
+        self._config = config
+        
+    @property
+    def config(self):
+        if self._config is None:
+            self._config = get_config()
+        return self._config
         
     def scan(self, paths: List[str]) -> List[UnrotatedLog]:
         logs = []
@@ -21,7 +27,9 @@ class LogFinderCollector:
                         if any(filename.endswith(ext.replace('*', '')) for ext in self.config.log_patterns):
                             filepath = os.path.join(dirpath, filename)
                             try:
-                                stat = os.stat(filepath)
+                                stat = os.lstat(filepath)
+                                if stat.st_mode & 0o170000 == 0o120000:  # symlink
+                                    continue
                                 if stat.st_size > threshold_bytes:
                                     logs.append(UnrotatedLog(
                                         path=filepath,
@@ -41,5 +49,22 @@ class LogFinderCollector:
         has_gz = os.path.exists(filepath + ".1.gz") or os.path.exists(filepath + ".gz")
         # Check for numbered rotation (app.log.1, app.log.2)
         has_numbered = os.path.exists(filepath + ".1") or os.path.exists(filepath + ".2")
-        return has_gz or has_numbered
+        if has_gz or has_numbered:
+            return True
+            
+        import glob
+        parent = os.path.dirname(filepath)
+        basename = os.path.basename(filepath)
+        patterns = [
+            os.path.join(parent, f"{basename}-*"),
+            os.path.join(parent, f"{basename}.*.gz"),
+            os.path.join(parent, f"{basename}.*.zip"),
+        ]
+        for pat in patterns:
+            try:
+                if glob.glob(pat):
+                    return True
+            except Exception:
+                pass
+        return False
 

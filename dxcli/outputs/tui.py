@@ -10,7 +10,7 @@ from ..store.models import Partition
 from ..collectors.dir_tree import DirectoryTreeCollector
 from ..collectors.log_finder import LogFinderCollector
 from ..collectors.stale_files import StaleFileCollector
-from ..analyzers import DiskPredictor, RootCauseAnalyzer, PrescriptionEngine, CorrelationEngine, AnomalyDetector
+from ..analyzers import DiskPredictor, RootCauseAnalyzer, PrescriptionEngine, CorrelationEngine, StatisticalAnomalyDetector
 from ..outputs.cli_report import format_bytes
 
 import os
@@ -69,7 +69,7 @@ class PredictionPanel(Static):
             self.display_label.update(text)
 
 class ProblemsPanel(Static):
-    problems_text = reactive("🟡 Waiting for deep scan...")
+    problems_text = reactive("[*] Waiting for deep scan...")
 
     def compose(self) -> ComposeResult:
         yield Label("Issues", classes="header-text")
@@ -93,7 +93,7 @@ class PrescriptionsPanel(Static):
             self.display_label.update(text)
 
 class AnomalyPanel(Static):
-    anomaly_text = reactive("✅ Sentinel: Systems Nominal")
+    anomaly_text = reactive("[OK] Sentinel: Systems Nominal")
 
     def compose(self) -> ComposeResult:
         yield Label("Sentinel Analysis", classes="header-text")
@@ -188,7 +188,7 @@ class DxApp(App):
             pred = predictor.predict_full_date(primary)
             
             engine = PrescriptionEngine()
-            prescs = engine.synthesize(logs, stales)
+            prescs = engine.synthesize(logs, stales, path)
             
             # 5. Correlate with Processes (single cached scan)
             correlator = CorrelationEngine()
@@ -201,7 +201,7 @@ class DxApp(App):
                 history_data[d.path] = [entry['size_bytes'] for entry in h]
             
             # 7. Detect Anomalies
-            detector = AnomalyDetector(db)
+            detector = StatisticalAnomalyDetector(db)
             anomalies = []
             for d in top_dirs[:5]:
                 res = detector.check_for_anomalies(d.path)
@@ -232,9 +232,9 @@ class DxApp(App):
         
         # Update Anomalies
         if anomalies:
-            self.query_one(AnomalyPanel).anomaly_text = "\n".join([f"⚠ {a}" for a in anomalies])
+            self.query_one(AnomalyPanel).anomaly_text = "\n".join([f"[!] {a}" for a in anomalies])
         else:
-            self.query_one(AnomalyPanel).anomaly_text = "✅ Sentinel: Systems Nominal"
+            self.query_one(AnomalyPanel).anomaly_text = "[OK] Sentinel: Systems Nominal"
         
         # Map correlation and history
         trend_info = {t['path']: t for t in correlated_trends}
@@ -257,19 +257,19 @@ class DxApp(App):
         # Update Prediction
         if pred and pred.days_until_full:
             self.query_one(PredictionPanel).prediction_text = (
-                f"⏰ Full in {pred.days_until_full:.1f} days\n"
-                f"📈 Growth: {format_bytes(pred.daily_growth_bytes)}/day"
+                f"[~] Full in {pred.days_until_full:.1f} days\n"
+                f"Growth: {format_bytes(pred.daily_growth_bytes)}/day"
             )
         else:
-            self.query_one(PredictionPanel).prediction_text = "⏰ Full in: N/A (Static)"
+            self.query_one(PredictionPanel).prediction_text = "[~] Full in: N/A (Static)"
             
         # Update Problems
         prob_count = len(logs) + len(stales)
         if prob_count > 0:
-            prob_str = f"🔴 Found {len(logs)} unrotated logs\n🟡 Found {len(stales)} stale files"
+            prob_str = f"[!] Found {len(logs)} unrotated logs\n[*] Found {len(stales)} stale files"
             self.query_one(ProblemsPanel).problems_text = prob_str
         else:
-            self.query_one(ProblemsPanel).problems_text = "✅ No issues found."
+            self.query_one(ProblemsPanel).problems_text = "[OK] No issues found."
             
         # Update Prescriptions
         if prescs:

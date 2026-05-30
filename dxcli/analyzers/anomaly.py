@@ -2,7 +2,7 @@ from typing import List, Dict, Optional
 from ..store.database import Database
 import time
 
-class AnomalyDetector:
+class StatisticalAnomalyDetector:
     """
     Analyzes historical snapshots to fingerprint behavioral anomalies.
     """
@@ -50,7 +50,7 @@ class AnomalyDetector:
         for i in range(len(history)-1):
             deltas.append(history[i+1]['size_bytes'] - history[i]['size_bytes'])
             
-        if all(d > 0 for d in deltas) and len(deltas) >= 4:
+        if all(d > 0 for d in deltas) and len(deltas) >= 2:
             # If total growth over this time is > 1MB (avoid noise)
             total_change = sum(deltas)
             if total_change > 1024 * 1024:

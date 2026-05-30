@@ -16,7 +16,7 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.columns import Columns
 from rich.box import DOUBLE, ROUNDED
-from typing import List, Optional
+from typing import Dict, List, Optional
 from ..store.models import DirNode, UnrotatedLog, StaleFile, Partition, Prescription
 
 console = Console(force_terminal=True)
@@ -89,14 +89,16 @@ def render_diagnosis(path: str,
                       prescriptions: List[Prescription] = None,
                       anomalies: List[str] = None,
                       prediction = None,
-                      app_accounting: List[dict] = None):
+                      app_accounting: List[dict] = None,
+                      classification: Dict[str, int] = None,
+                      active_writers: List[dict] = None):
     
     trend_info = {t['path']: t for t in trends} if trends else {}
     
     # ── HEADER ───────────────────────────────────────────
     console.print()
     console.print(Panel(
-        Text.from_markup(f"[bold white]🩺 DISK INTELLIGENCE REPORT[/bold white]\n[dim]{path}[/dim]"),
+        Text.from_markup(f"[bold white]DISK INTELLIGENCE REPORT[/bold white]\n[dim]{path}[/dim]"),
         box=ROUNDED,
         style="blue",
         expand=False
@@ -104,16 +106,27 @@ def render_diagnosis(path: str,
 
     # ── 1. ACTION HEADER (PRESCRIPTION FIRST) ────────────────
     if prescriptions:
-        p = prescriptions[0]  # Focus on the most impactful action
-        total_savings = sum(pr.size_savings_bytes for pr in prescriptions)
-        
-        action_text = Text.from_markup(
-            f"  [bold red]🔥 ACTION REQUIRED[/bold red]\n"
-            f"  [bold]Primary Fix:[/bold] [yellow]{p.name}[/yellow]\n"
-            f"  [dim]Reclaim {format_bytes(total_savings)} across {len(prescriptions)} items.[/dim]\n"
-            f"  [bold]Run:[/bold] [white on red] dxcli heal [/white on red]"
-        )
-        console.print(Panel(action_text, box=DOUBLE, border_style="red", padding=(1, 2)))
+        actionable_prescriptions = [pr for pr in prescriptions if pr.action_type in ("delete", "create_file") and pr.target_path]
+        if actionable_prescriptions:
+            p = actionable_prescriptions[0]  # Focus on the most impactful action
+            total_savings = sum(pr.size_savings_bytes for pr in actionable_prescriptions)
+            
+            action_text = Text.from_markup(
+                f"  [bold red][!] ACTION REQUIRED[/bold red]\n"
+                f"  [bold]Primary Fix:[/bold] [yellow]{p.name}[/yellow]\n"
+                f"  [dim]Reclaim {format_bytes(total_savings)} across {len(actionable_prescriptions)} items.[/dim]\n"
+                f"  [bold]Run:[/bold] [white on red] dxcli heal [/white on red]"
+            )
+            console.print(Panel(action_text, box=DOUBLE, border_style="red", padding=(1, 2)))
+        else:
+            p = prescriptions[0]
+            action_text = Text.from_markup(
+                f"  [bold yellow][i] RECOMMENDATION[/bold yellow]\n"
+                f"  [bold]Manual Fix:[/bold] [yellow]{p.name}[/yellow]\n"
+                f"  [dim]{p.description}[/dim]\n"
+                f"  [bold]Command:[/bold] [white on black] {p.template} [/white on black]"
+            )
+            console.print(Panel(action_text, box=ROUNDED, border_style="yellow", padding=(1, 2)))
     
     # ── 2. MINIMALIST STATUS ───────────────────────────────
     if partition:
@@ -123,9 +136,9 @@ def render_diagnosis(path: str,
         if prediction and prediction.days_until_full is not None:
             days = prediction.days_until_full
             if days < 7:
-                pred_str = f"🆘 Full in [bold blink red]{days:.1f} days[/bold blink red]"
+                pred_str = f"[!!] Full in [bold blink red]{days:.1f} days[/bold blink red]"
             else:
-                pred_str = f"⏰ Full in [bold yellow]{days:.0f} days[/bold yellow]"
+                pred_str = f"[~] Full in [bold yellow]{days:.0f} days[/bold yellow]"
         else:
             pred_str = "[dim]Growth stable[/dim]"
             
@@ -150,7 +163,7 @@ def render_diagnosis(path: str,
     # ── 4. SENTINEL ALERTS ────────────────────────────────
     if anomalies:
         for a in anomalies:
-            console.print(f"  [bold red]⚠ SENTINEL:[/bold red] {a}")
+            console.print(f"  [bold red][!] SENTINEL:[/bold red] {a}")
     
     # ── 5. CONSUMER INSIGHTS ──────────────────────────────
     table = Table(
@@ -202,9 +215,62 @@ def render_diagnosis(path: str,
             app_table.add_row(f"{app['name']} [dim](PIDs: {pids_str})[/dim]", format_bytes(app['total_bytes']))
             
         console.print(app_table)
+
+    # ── 5.6 SEMANTIC CATEGORIZATION ────────────────────────
+    if classification:
+        class_table = Table(
+            box=ROUNDED,
+            show_header=True,
+            header_style="bold green",
+            border_style="dim",
+            expand=True,
+            padding=(0, 1),
+            title="\n[dim]Semantic Usage (by Content Type)[/dim]"
+        )
+        class_table.add_column("Category", style="white", ratio=3)
+        class_table.add_column("Total Size", justify="right", style="bold white", ratio=1)
+        
+        # Sort by size descending
+        sorted_cats = sorted(classification.items(), key=lambda x: x[1], reverse=True)
+        for cat, size in sorted_cats:
+            if size > 0:
+                class_table.add_row(cat, format_bytes(size))
+        
+        console.print(class_table)
+
+    # ── 5.7 ACTIVE WRITERS ────────────────────────────────
+    if active_writers:
+        writer_table = Table(
+            box=ROUNDED,
+            show_header=True,
+            header_style="bold red",
+            border_style="dim",
+            expand=True,
+            padding=(0, 1),
+            title="\n[dim]Active Writers (Detected Throughput)[/dim]"
+        )
+        writer_table.add_column("Process", style="white", ratio=3)
+        writer_table.add_column("Throughput", justify="right", style="bold red", ratio=1)
+        
+        for w in active_writers:
+            writer_table.add_row(f"{w['name']} [dim](PID: {w['pid']})[/dim]", f"{format_bytes(int(w['throughput_bps']))}/s")
+            
+        console.print(writer_table)
     
     # ── 6. ALL CLEAR FOOTER ──────────────────────────────
     if not prescriptions and not logs and not stales:
-        console.print(f"  [bold green]✅ ALL CLEAR[/bold green] — No immediate threats detected.")
+        console.print(f"  [bold green][OK] ALL CLEAR[/bold green] -- No immediate threats detected.")
     
+    # ── 7. INSTALL INSTRUCTIONS FOR GENERATED CONFIGS ────
+    if prescriptions:
+        create_files = [pr for pr in prescriptions if pr.action_type == "create_file"]
+        if create_files:
+            console.print("\n  [bold yellow][i] INSTALL INSTRUCTIONS FOR GENERATED CONFIGS[/bold yellow]")
+            for pr in create_files:
+                basename = os.path.basename(pr.target_path)
+                system_path = f"/etc/logrotate.d/{basename}"
+                console.print(f"    - To install the generated logrotate configuration, copy it to the target path:")
+                console.print(f"      [bold white]sudo cp {pr.target_path} {system_path}[/bold white]")
+
     console.print()
+

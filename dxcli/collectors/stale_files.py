@@ -2,11 +2,17 @@ import os
 import time
 from typing import List
 from ..store.models import StaleFile
-from ..config import DEFAULT_CONFIG
+from ..config import get_config
 
 class StaleFileCollector:
-    def __init__(self, config=DEFAULT_CONFIG):
-        self.config = config
+    def __init__(self, config=None):
+        self._config = config
+        
+    @property
+    def config(self):
+        if self._config is None:
+            self._config = get_config()
+        return self._config
         
     def scan(self, paths: List[str]) -> List[StaleFile]:
         stales = []
@@ -19,7 +25,9 @@ class StaleFileCollector:
                     for filename in filenames:
                         filepath = os.path.join(dirpath, filename)
                         try:
-                            stat = os.stat(filepath)
+                            stat = os.lstat(filepath)
+                            if stat.st_mode & 0o170000 == 0o120000:  # symlink
+                                continue
                             # usually a-time is reliable, but sometimes disabled (noatime), so fallback to mtime
                             last_accessed = max(stat.st_atime, stat.st_mtime)
                             age_seconds = now - last_accessed

@@ -1,5 +1,5 @@
 import pytest
-from dxcli.analyzers.anomaly import AnomalyDetector
+from dxcli.analyzers.anomaly import StatisticalAnomalyDetector
 
 def test_log_bomb_detection(mocker):
     mock_db = mocker.Mock()
@@ -13,7 +13,7 @@ def test_log_bomb_detection(mocker):
         {'timestamp': now,      'size_bytes': 40000 + (100 * 1024 * 1024)} # +100MB
     ]
     
-    detector = AnomalyDetector(mock_db)
+    detector = StatisticalAnomalyDetector(mock_db)
     result = detector.check_for_anomalies("/path")
     assert "LOG BOMB" in result
 
@@ -29,6 +29,6 @@ def test_leak_detection(mocker):
         {'timestamp': now,      'size_bytes': 14 * 1024 * 1024}
     ]
     
-    detector = AnomalyDetector(mock_db)
+    detector = StatisticalAnomalyDetector(mock_db)
     result = detector.check_for_anomalies("/path")
     assert "LEAK" in result

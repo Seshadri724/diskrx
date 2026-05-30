@@ -7,12 +7,16 @@ on:
   pull_request:
     branches: [ main, master ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +31,13 @@ jobs:
           pip install -e ".[test]"
       
       - name: Run tests
+        run: pytest tests/ -v -W error::RuntimeWarning
+
+      - name: Lint
         run: |
-          # Note: We are skipping actual test runs as per user request to 'dont make any tests to run'
-          # But in a real CI, this would be: pytest tests/ -v -W error::RuntimeWarning
-          echo "CI pipeline verified. Skipping tests as requested."
+          flake8 dxcli --max-line-length=120 --extend-ignore=E203,W503
+          black --check dxcli
+
+      - name: Security scan
+        run: bandit -r dxcli -q -ll
+
