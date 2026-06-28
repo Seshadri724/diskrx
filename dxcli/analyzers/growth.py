@@ -4,6 +4,14 @@ from typing import Optional, Tuple
 import numpy as np
 import warnings
 
+# numpy moved RankWarning to numpy.exceptions in 1.25 and removed the
+# top-level numpy.RankWarning alias in 2.0. Resolve it in a version-agnostic
+# way so dxcli works across the declared numpy>=1.24 support range.
+try:
+    from numpy.exceptions import RankWarning  # numpy >= 1.25
+except ImportError:  # pragma: no cover - exercised only on numpy < 1.25
+    from numpy import RankWarning  # numpy < 1.25
+
 class GrowthTracker:
     """
     Calculates daily growth rate per directory based on historical SQLite snapshots.
@@ -24,10 +32,10 @@ class GrowthTracker:
         # We want m (bytes per second)
         # Polyfit returns [m, c] for deg=1
         with warnings.catch_warnings():
-            warnings.simplefilter('error', np.exceptions.RankWarning)
+            warnings.simplefilter('error', RankWarning)
             try:
                 m, _ = np.polyfit(timestamps, sizes, 1)
-            except np.exceptions.RankWarning:
+            except RankWarning:
                 return None  # Data too noisy/flat for reliable regression
         
         # Convert bytes per second to bytes per day
@@ -45,7 +53,7 @@ class GrowthTracker:
         sizes = np.array([h['used_bytes'] for h in history])
         
         with warnings.catch_warnings():
-            warnings.simplefilter('error', np.exceptions.RankWarning)
+            warnings.simplefilter('error', RankWarning)
             try:
                 p, residuals, rank, singular_values, rcond = np.polyfit(timestamps, sizes, 1, full=True)
                 m = p[0]

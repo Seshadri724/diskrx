@@ -184,7 +184,12 @@ def run_watch_loop(path, interval, threshold_bytes, webhook, notify_desktop, ite
 @click.version_option(version=__version__, prog_name="dxcli")
 @click.pass_context
 def cli(ctx):
-    """dxcli - disk diagnostics for operators."""
+    """dxcli - the disk doctor for your CI pipeline and dev box.
+
+    Diagnoses what filled the disk, which process did it, and prescribes
+    a fix. Use `dxcli ci` in pipelines, `dxcli diagnose --docker` before
+    builds, `dxcli diagnose ~ --classify` on a dev box.
+    """
     if ctx.invoked_subcommand is None:
         ctx.invoke(diagnose, path=".")
 
@@ -215,8 +220,8 @@ def status():
 @click.argument("path", default=".")
 @click.option("--json", "as_json", is_flag=True, help="Output diagnosis in JSON format")
 @click.option("--report", default=None, help="Generate an HTML report at the specified path.")
-@click.option("--docker", is_flag=True, help="Analyze Docker disk usage and generate cleanup suggestions.")
-@click.option("--ci", is_flag=True, help="Run in CI mode and fail on critical disk or policy issues.")
+@click.option("--docker", is_flag=True, help="Include Docker images, containers, volumes, and build cache in the diagnosis (great before `docker build`).")
+@click.option("--ci", is_flag=True, help="CI mode: silent on success, exits 1 on critical disk pressure or policy violations. Drop into a pre-build step.")
 @click.option("--classify", is_flag=True, help="Group disk usage by semantic category.")
 @click.option("--target", help="Use a named target defined in config.yaml")
 @click.option("--enable-plugins", is_flag=True, help="Opt-in to execute local plugins from ~/.dx/plugins.")
@@ -224,7 +229,14 @@ def status():
 @click.option("--nice", type=int, default=None, help="Set nice priority level (Linux only).")
 @click.option("--ionice", is_flag=True, help="Set ionice idle priority (Linux only).")
 def diagnose(path, as_json, report, docker, ci, classify, target, enable_plugins, scan_threads, nice, ionice):
-    """Perform a deep scan and diagnostic of the path."""
+    """Deep-scan PATH and diagnose what filled it up.
+
+    Common uses:
+      dxcli diagnose .            # current dir (default)
+      dxcli diagnose . --docker   # include Docker images/cache/volumes
+      dxcli diagnose . --ci       # CI mode: exits 1 on critical pressure
+      dxcli diagnose ~ --classify # group by category (node_modules, caches, etc.)
+    """
     from .analyzers import (
         StatisticalAnomalyDetector,
         CorrelationEngine,
@@ -390,6 +402,38 @@ def diagnose(path, as_json, report, docker, ci, classify, target, enable_plugins
     )
 
 
+@cli.command(name="ci")
+@click.argument("path", default=".")
+@click.option("--no-docker", is_flag=True, help="Skip Docker analysis (on by default in `ci`).")
+@click.option("--json", "as_json", is_flag=True, help="Output diagnosis in JSON format.")
+@click.pass_context
+def ci_cmd(ctx, path, no_docker, as_json):
+    """Shortcut for CI pipelines: `diagnose PATH --ci --docker`.
+
+    Silent on success, exits 1 on critical disk pressure or policy
+    violations. Drop in as a pre-build step:
+
+      - name: Disk guard
+        run: |
+          pip install dxcli
+          dxcli ci
+    """
+    ctx.invoke(
+        diagnose,
+        path=path,
+        as_json=as_json,
+        report=None,
+        docker=not no_docker,
+        ci=True,
+        classify=False,
+        target=None,
+        enable_plugins=False,
+        scan_threads=None,
+        nice=None,
+        ionice=False,
+    )
+
+
 @cli.command()
 @click.argument("path", default=".")
 @click.option("--hours", default=24, help="Hours back to compare against")
@@ -457,14 +501,163 @@ def predict(path):
     gb_total = partition.total_bytes / (1024**3)
     gb_used = partition.used_bytes / (1024**3)
     console.print(f"Current:     {gb_used:.1f} GB / {gb_total:.1f} GB ({partition.usage_percent:.1f}%)")
-    if result and result.days_until_full is not None:
+    
+    if result:
         gb_growth = result.daily_growth_bytes / (1024**3)
         accel_str = "(accelerating)" if result.is_accelerating else "(stable)"
-        console.print(f"Growth Rate: {gb_growth:.2f} GB/day {accel_str}")
-        console.print(f"\nEstimated Full: In [bold red]{result.days_until_full:.1f} days[/bold red]")
+        
+        if result.hint == "high variance":
+            console.print(f"Growth Rate: {gb_growth:.2f} GB/day (high variance)")
+            console.print("\nEstimated Full: [bold yellow]Unpredictable (high variance)[/bold yellow]")
+        elif result.days_until_full is not None:
+            console.print(f"Growth Rate: {gb_growth:.2f} GB/day {accel_str}")
+            if result.days_until_full > 365:
+                console.print("\nEstimated Full: [bold green]Stable (fills in >1 year)[/bold green]")
+            elif result.days_until_full_low is not None and result.days_until_full_high is not None:
+                low = int(round(result.days_until_full_low))
+                high = int(round(result.days_until_full_high))
+                if high > 365:
+                    console.print(f"\nEstimated Full: In [bold red]>= {low} days[/bold red]")
+                else:
+                    console.print(f"\nEstimated Full: In [bold red]{low}–{high} days[/bold red]")
+            else:
+                console.print(f"\nEstimated Full: In [bold red]{result.days_until_full:.1f} days[/bold red]")
+        else:
+            console.print(f"Growth Rate: {gb_growth:.2f} GB/day {accel_str}")
+            console.print("\nEstimated Full: [bold green]Not growing[/bold green]")
     else:
         console.print("Growth Rate: Static or insufficient history.")
         console.print("\nEstimated Full: [bold green]Not growing[/bold green]")
+
+
+@cli.command()
+@click.argument("path", default=".")
+def explain(path):
+    """Explain disk usage status and anomalies in plain English."""
+    from .analyzers import (
+        StatisticalAnomalyDetector,
+        CorrelationEngine,
+        DiskPredictor,
+        PrescriptionEngine,
+        RootCauseAnalyzer,
+    )
+    from .collectors.log_finder import LogFinderCollector
+    from .collectors.stale_files import StaleFileCollector
+    from .collectors.dir_tree import DirectoryTreeCollector
+    from .platform import provider
+    from .outputs.cli_report import format_bytes
+
+    path = os.path.abspath(path)
+    partition = provider.get_partition_for_path(path)
+    dir_collector = DirectoryTreeCollector()
+    top_dirs = dir_collector.scan(path)
+    logs = LogFinderCollector().scan([path])
+    stales = StaleFileCollector().scan([path])
+
+    db = get_database()
+    try:
+        if partition:
+            try:
+                db.record_snapshot(partition, top_dirs)
+            except Exception:
+                pass
+
+        trends = RootCauseAnalyzer(db).attribute_cause(top_dirs)
+        correlated_trends = CorrelationEngine(db=db).correlate(trends)
+        prediction = DiskPredictor(db).predict_full_date(partition) if partition else None
+        prescriptions = PrescriptionEngine().synthesize(logs, stales, path)
+    finally:
+        db.close()
+
+    # 1. First sentence: Growing path, growth rate, and acceleration
+    growing_path = path
+    velocity = 0.0
+    if correlated_trends:
+        sorted_trends = sorted(correlated_trends, key=lambda x: x.get("velocity_per_day", 0.0), reverse=True)
+        top_trend = sorted_trends[0]
+        if top_trend.get("velocity_per_day", 0.0) > 0:
+            growing_path = top_trend["path"]
+            velocity = top_trend["velocity_per_day"]
+
+    if velocity == 0.0 and prediction and prediction.daily_growth_bytes > 0:
+        velocity = prediction.daily_growth_bytes
+
+    if velocity > 0:
+        growth_rate_str = f"{format_bytes(int(velocity))}/day"
+        if prediction and prediction.is_accelerating:
+            acceleration_str = "accelerating"
+        else:
+            acceleration_str = "stable"
+        first_sentence = f"{growing_path} is growing {growth_rate_str}, {acceleration_str}."
+    else:
+        first_sentence = f"{growing_path} is stable."
+
+    # 2. Second sentence: Culprit attribution
+    culprit = None
+    if correlated_trends:
+        sorted_trends = sorted(correlated_trends, key=lambda x: x.get("velocity_per_day", 0.0), reverse=True)
+        for t in sorted_trends:
+            if t.get("culprit"):
+                culprit = t["culprit"]
+                break
+
+    if not culprit:
+        from .collectors.process_mapper import ProcessMapper
+        try:
+            active = ProcessMapper().get_active_writers(path, interval=0.5)
+            if active:
+                culprit_data = active[0]
+                culprit_str = f"PID {culprit_data['pid']} ({culprit_data['name']}) is the writer."
+            else:
+                culprit_str = "No active writer attributed."
+        except Exception:
+            culprit_str = "No active writer attributed."
+    else:
+        culprit_str = f"PID {culprit.pid} ({culprit.name}) is the writer."
+
+    # 3. Third sentence: Forecast until full
+    mountpoint = partition.mountpoint if partition else "/"
+    if prediction and prediction.hint == "high variance":
+        pred_str = f"At this rate {mountpoint} is stable (unpredictable due to high growth variance)."
+    elif prediction and prediction.days_until_full is not None:
+        if prediction.days_until_full > 365:
+            pred_str = f"At this rate {mountpoint} is stable."
+        else:
+            if prediction.days_until_full_low is not None and prediction.days_until_full_high is not None:
+                low = int(round(prediction.days_until_full_low))
+                high = int(round(prediction.days_until_full_high))
+                if high > 365:
+                    pred_str = f"At this rate {mountpoint} fills in >= {low} days."
+                elif low == high:
+                    pred_str = f"At this rate {mountpoint} fills in {low} days."
+                else:
+                    pred_str = f"At this rate {mountpoint} fills in {low}–{high} days."
+            else:
+                pred_str = f"At this rate {mountpoint} fills in {prediction.days_until_full:.1f} days."
+    else:
+        pred_str = f"At this rate {mountpoint} is stable."
+
+    # 4. Fourth sentence: Root cause
+    if logs:
+        unrotated_no_config = [l for l in logs if not l.has_logrotate_config]
+        if unrotated_no_config:
+            root_cause_str = "Root cause: no logrotate config."
+        else:
+            root_cause_str = "Root cause: unrotated log files."
+    elif stales:
+        root_cause_str = "Root cause: stale files accumulating."
+    else:
+        root_cause_str = "Root cause: general disk usage."
+
+    # 5. Fifth sentence: Fix recommendation
+    actionable = [p for p in prescriptions if p.action_type in ("delete", "create_file") and p.target_path]
+    if actionable:
+        fix_str = "Fix: dxcli heal."
+    else:
+        fix_str = "Fix: review recommended actions."
+
+    console.print(f"{first_sentence} {culprit_str} {pred_str} {root_cause_str} {fix_str}")
+
 
 
 @cli.command()
@@ -476,8 +669,9 @@ def predict(path):
 @click.option("--scan-threads", type=int, default=None, help="Max threads to use for scanning directories.")
 @click.option("--nice", type=int, default=None, help="Set nice priority level (Linux only).")
 @click.option("--ionice", is_flag=True, help="Set ionice idle priority (Linux only).")
+@click.option("--no-tui", is_flag=True, help="Disable the live TUI dashboard and run as a stdout print loop.")
 @click.argument("path", default=".")
-def watch(interval, alert_threshold, webhook, notify_desktop, target, scan_threads, nice, ionice, path):
+def watch(interval, alert_threshold, webhook, notify_desktop, target, scan_threads, nice, ionice, no_tui, path):
     """Continuous monitoring mode. Snapshots disk state periodically."""
     path, target_threshold, target_interval = resolve_target_config(path, target)
     if target_threshold:
@@ -485,7 +679,23 @@ def watch(interval, alert_threshold, webhook, notify_desktop, target, scan_threa
     if target_interval:
         interval = target_interval
     threshold_bytes = parse_bytes(alert_threshold) if alert_threshold else 0
-    run_watch_loop(path, interval, threshold_bytes, webhook, notify_desktop, scan_threads=scan_threads, nice=nice, ionice=ionice)
+    
+    use_tui = sys.stdout.isatty() and not no_tui
+    
+    if use_tui:
+        from .outputs.tui import DxApp
+        app = DxApp(
+            watch_mode=True,
+            path=path,
+            interval=interval,
+            threshold_bytes=threshold_bytes,
+            webhook=webhook,
+            notify_desktop=notify_desktop,
+            scan_threads=scan_threads
+        )
+        app.run()
+    else:
+        run_watch_loop(path, interval, threshold_bytes, webhook, notify_desktop, scan_threads=scan_threads, nice=nice, ionice=ionice)
 
 
 @cli.command()

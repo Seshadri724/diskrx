@@ -1,133 +1,190 @@
-# 🩺 dxcli — The Super Awesome Forever Guide
+# dxcli — the developer guide
 
-Welcome to the definitive living manual for **dxcli**, the world's first **Disk Intelligence** platform. This document is a sacred record of our journey from a simple diagnostic script to a category-defining infrastructure powerhouse.
-
----
-
-## 🚀 The Vision
-
-`dxcli` is not a tool; it's a **Standard**. Our goal is to own the "Standard Unit of Disk Awareness." We don't just show data; we give orders. In the "Storage Crisis" of the modern cloud, `dxcli` is the decision engine that saves SREs 45 minutes of 2 AM investigation.
+The disk doctor for your CI pipeline and dev box. This guide covers everything from a 30-second CI guard to long-running production deployments.
 
 ---
 
-## 🏗️ Core Architecture: The Six Pillars
+## What you'll use it for
 
-1.  **Collectors**: The hands. High-speed parallel scanning of the filesystem and process space.
-2.  **Analyzers**: The brain. Linear regression, anomaly detection, and community-driven plugin logic.
-3.  **Policy Engine**: The law. Declarative "Disk Policy as Code" (YAML) for fleet-wide governance.
-4.  **Plugin SDK**: The heart. A Shopify-style ecosystem allowing anyone to build stack-specific intelligence.
-5.  **Heal Engine**: The surgeon. Opinionated remediation with "Sleep Insurance" remittance reports.
-6.  **Outputs**: The voice. One-screen diagnostic clarity, shareable HTML reports, and Prometheus-compatible sentinels.
+- **CI pipelines** — fail fast when a runner is unhealthy instead of failing weird mid-build. See [CI integration](#ci-integration).
+- **Docker builds** — diagnose image bloat, dangling cache, and orphan volumes. See [Docker workflows](#docker-workflows).
+- **Dev containers and laptops** — find what's eating your home dir without grepping `du -sh *` for an hour. See [Local dev usage](#local-dev-usage).
+- **Long-running hosts** — daemon mode, webhook alerts, systemd sandboxing. See [Production deployment](#production-deployment).
 
 ---
 
-## 🛠️ The Toolkit (Command Reference)
+## Quick start
+
+```bash
+pip install dxcli
+dxcli ci              # silent on success, exits 1 on critical pressure
+dxcli diagnose .      # interactive report on the current dir
+dxcli diagnose ~ --classify   # group home-dir usage by category
+```
+
+---
+
+## CI integration
+
+The shortest possible drop-in:
+
+```yaml
+- name: Disk guard
+  run: |
+    pip install dxcli
+    dxcli ci
+```
+
+`dxcli ci` is equivalent to `dxcli diagnose . --ci --docker`. It exits `1` if:
+
+- Disk usage is ≥ 90% on the partition holding the path.
+- Any `[CRITICAL]` policy violation is found.
+
+### Why a pre-build guard
+Build agents are ephemeral or shared. `No space left on device` mid-build corrupts artifacts, produces cryptic I/O errors, and wastes 30–60 minutes of debugging. A guard step catches the problem in seconds and points at the cause.
+
+### Worked examples
+- [GitHub Actions workflow](docs/examples/github-actions.yml)
+- [GitLab CI snippet](docs/examples/gitlab-ci.yml)
+- [Composite GitHub Action](action.yml) — `uses: Seshadri724/dxcli@v1`
+- [Jenkins, full CI playbook](GUIDE_CI.md)
+
+---
+
+## Docker workflows
+
+```bash
+dxcli diagnose . --docker
+```
+
+Correlates Docker's own bookkeeping (images, containers, volumes, build cache) with system disk pressure and prescribes specific cleanup commands (`docker builder prune`, `docker image prune -a`, …) with the actual bytes each would free.
+
+Use it:
+- Before a `docker build` in a tight runner.
+- As a post-step on failed builds to attach evidence to a bug report (`--report disk-report.html`).
+- Inside a multi-stage build to catch a bloated builder layer — see [docs/examples/Dockerfile](docs/examples/Dockerfile).
+
+---
+
+## Local dev usage
+
+```bash
+dxcli diagnose ~ --classify
+```
+
+Groups disk usage by category — `node_modules`, Python venvs, build artifacts, caches (pip, npm, yarn, cargo), logs — so you can see at a glance whether it's `~/.cache/pip` or that one `node_modules` from 2024 that's killing you.
+
+Other useful commands on a dev box:
+
+| Command | What it does |
+| --- | --- |
+| `dxcli diff . --hours 1` | Directories that grew in the last hour. Catches the `npm install` that bloated the disk. |
+| `dxcli predict /` | Estimates time-to-full via linear regression on historical snapshots. |
+| `dxcli heal <path>` | Applies scoped, reversible cleanup. `dxcli undo` reverts the last one. |
+| `dxcli dash` | TUI dashboard with live updates. |
+
+A devcontainer recipe is in [docs/examples/devcontainer.json](docs/examples/devcontainer.json); a git pre-commit hook is in [docs/examples/pre-commit-hook.sh](docs/examples/pre-commit-hook.sh).
+
+---
+
+## Command reference
+
+### `dxcli ci [PATH]`
+CI shortcut. Equivalent to `dxcli diagnose PATH --ci --docker`. `--no-docker` skips Docker analysis; `--json` outputs structured results.
 
 ### `dxcli diagnose [PATH]`
-The category leader. Scans a path, enforces policies, runs plugins, and returns a "Prescription-First" report.
-- `--json`: Outputs pure JSON for automation.
-- `--enable-plugins`: **Opt-in** to run community analyzer plugins securely.
-- `--report [file.html]`: Generates a beautiful, self-contained HTML report.
-- `--docker`: Runs the Docker Analyzer for actionable cleanup commands.
-- `--ci`: **The Enterprise Wedge.** Pipeline mode for CI/CD failures.
-- `--classify`: **Semantic Grouping.** Group disk usage by content type.
-- `--target [NAME]`: Use a named target from `config.yaml`.
+Deep scan and diagnosis.
+- `--ci` — CI mode: exits 1 on critical pressure or policy violations.
+- `--docker` — include Docker disk usage.
+- `--classify` — group output by semantic category.
+- `--report file.html` — write a shareable HTML report.
+- `--json` — machine-readable output.
+- `--target NAME` — use a named target from `config.yaml`.
+- `--enable-plugins` — opt-in to local plugins from `~/.dx/plugins`.
 
-### `dxcli watch [PATH] --interval [N] --alert-threshold [SIZE]`
-The tripwire. Continuously monitors a directory for growth anomalies.
-- `--webhook [URL]`: Notify Slack/PagerDuty on threshold breach.
-- `--notify-desktop`: **Proactive Alerting.** Native desktop notifications.
-- `--target [NAME]`: Load settings from a saved target.
+### `dxcli diff [PATH] --hours N`
+Show what grew (or shrank) since a past snapshot.
 
-### `dxcli daemon [start|stop|status] --command [CMD]`
-The ghost. Runs `watch` or `serve` as a background process.
+### `dxcli predict [PATH]`
+Estimate time-to-full via linear regression on history.
+
+### `dxcli watch [PATH] --interval N --alert-threshold SIZE`
+Continuous monitoring. `--webhook URL` posts to Slack/PagerDuty; `--notify-desktop` raises native notifications.
+
+### `dxcli heal [PATH]` / `dxcli undo`
+Apply or revert scoped cleanup. Always preview with `--dry-run`.
+
+### `dxcli serve` / `dxcli daemon`
+`serve` exports Prometheus metrics; `daemon` runs `watch` or `serve` as a background process.
 
 ### `dxcli fleet [HOSTS...]`
-The aggregator. Multi-server health dashboard.
+Aggregate metrics across hosts.
 
-### `dxcli add-target`
-The onboarding wizard. Interactively register a monitor target.
+### `dxcli add-target` / `dxcli generate-service`
+Wizards for registering a monitor target and producing a hardened systemd unit.
 
-### `dxcli heal [PATH]`
-The stabilizer. Applies prescriptions and provides a Sleep Insurance report. *(Always use `--dry-run` to preview changes!)*
-
-### `dxcli undo`
-The reset button. Reverts remediation actions using the audit stack.
-
-### `dxcli dash` & `dxcli serve`
-The grid. `dash` opens the TUI workstation, while `serve` exports real-time metrics for global observability (Prometheus/Grafana).
-
-### `dxcli demo`
-The hero maker. Seeds 7 days of synthetic growth history and immediately runs a diagnostic to showcase predictive capabilities.
+### `dxcli dash` / `dxcli demo`
+TUI dashboard and a synthetic dataset for trying things out.
 
 ---
 
-## 🛡️ The Four Trust Pillars
+## Production deployment
 
-SREs don't trust marketing; they trust behavior. `dxcli` is built on these four unshakeable pillars:
+The same engine that runs in a 60-second CI step also runs as a long-lived process for fleet monitoring.
 
-1.  **🔍 Radical Transparency**: Zero telemetry. Data stays on your machine in `~/.dx/history.db` with **0600 permissions**.
-2.  **🛡️ Production Hardening**: Built-in support for systemd sandboxing (`NoNewPrivileges`, `ProtectSystem=strict`). Use `generate-service` to deploy with zero-trust defaults.
-3.  **🔧 Workflow Integration**: Composable outputs (JSON/HTML), standard exit codes, and Prometheus-compatible metrics out of the box.
-4.  **📊 Evidence over Claims**: Every "Prescription" is backed by attribution data. Every action is reversible with `dxcli undo`.
+- **Hardened state directory** — `~/.dx` is locked to `0700`, `history.db` to `0600`.
+- **Atomic writes** — state is never left partial across crashes.
+- **Systemd sandboxing** — `generate-service` produces a unit with `NoNewPrivileges` and `ProtectSystem=strict`.
+- **Plugin opt-in** — community plugins never execute without explicit `--enable-plugins`.
+- **Zero-trust healing** — `heal` enforces realpath-based scoping; symlink escapes are rejected.
+- **Reversibility** — every `heal` action is recorded; `undo` rolls it back.
+
+Use the same `dxcli ci` pattern for canary jobs on production hosts, or `dxcli daemon start --command serve` to export Prometheus metrics.
 
 ---
 
-## 📜 The Forever Log: Project Evolution
+## Philosophy
 
-### Iteration 5: Production Hardening (The Fortress Phase)
+1. **Prescription over description** — tell the user what to do, not just what they have.
+2. **Attribution is key** — every byte has a parent process. Find it.
+3. **Safe remediation** — every automated action must be auditable and reversible.
+4. **Fail fast in CI, never fail weird** — exit codes are a feature.
+
+---
+
+## Project evolution log
+
+### Iteration 5: Production hardening
+*2026-05-12 — "secure by default"*
+- Plugin execution gated behind `--enable-plugins`.
+- `HealEngine` enforces realpath-based scoping; symlink escapes blocked.
+- Centralized atomic writes via `dxcli/state.py`.
+- `0700` / `0600` enforced via a unified state provider.
+- Lifecycle hardening for Sentinel and Watch.
+- Quality gates: `flake8`, `black`, `bandit`.
+
+### Iteration 4: Attribution and Docker
 *2026-05-12*
-> "Secure by Default"
+- Throughput-sampling process mapper (bytes/sec, not just PID lists).
+- Docker Analyzer: dangling layers, build cache, estimated savings.
+- Named targets / YAML config; `add-target` and `--target`.
+- `generate-service` for hardened systemd units.
+- Cross-platform desktop notifications.
+- `fleet` for multi-host aggregation.
 
-**Achievements:**
-- ✅ **Plugin Opt-In**: Community plugins are now physically impossible to run without explicit `--enable-plugins` consent, mitigating supply-chain risks.
-- ✅ **Zero-Trust Healing**: `HealEngine` strictly validates target paths against the scanned scope using realpath resolution, blocking all symlink escape vectors.
-- ✅ **Atomic Persistence**: Extracted `dxcli/state.py` to implement centralized, atomic file writes. State is never left in a partial or corruptible condition.
-- ✅ **Strict OS Hygiene**: Enforced `0700` and `0600` permissions via a unified state provider.
-- ✅ **Lifecycle Safety**: Fortified long-running processes (Sentinel, Watch) with robust exception handling and deterministic resource cleanup.
-- ✅ **Quality Gates**: Dev workflow standardized with `flake8`, `black`, and `bandit` for automated security linting.
-
-### Iteration 4: The Viral Enterprise
-*2026-05-12*
-> "From Utility to Infrastructure"
-
-**Achievements:**
-- ✅ **Smarter Attribution**: Process mapping now correlates historical deltas with live PIDs and **throughput sampling** (Bytes/sec).
-- ✅ **The Ultimate Bro Feature**: Docker Analyzer identifies dangling layers and build cache with estimated savings.
-- ✅ **Named Targets & Config**: Migrated to YAML configuration with `add-target` and `--target` support for reduced CLI friction.
-- ✅ **Production Hardening**: Enforced 0700/0600 file permissions and added `generate-service` for hardened systemd deployment.
-- ✅ **Cross-Platform Alerts**: Native desktop notifications added for Windows, macOS, and Linux.
-- ✅ **Fleet Mode**: Added `fleet` command for multi-server metric aggregation.
-
-### Iteration 3: The Moat Features & Strategic Reality
+### Iteration 3: Diff engine and shareable reports
 *2026-04-24*
-> "Building the Defensible Category"
+- `dxcli diff` against historical snapshots.
+- `--alert-threshold` tripwires for `watch`.
+- Self-contained HTML reports via `--report`.
 
-**Achievements:**
-- ✅ **The Diff Engine**: Implemented `dxcli diff` to query historical DB snapshots and show growth deltas.
-- ✅ **Threshold Watcher**: Added `--alert-threshold` tripwires to catch anomalies in real-time.
-- ✅ **Shareable Intelligence**: Built self-contained HTML report generation (`diagnose --report`).
-- ✅ **Strategic Shift**: Reoriented from "speed" to "intelligence/trust" based on brutal market feedback. Focus shifted to BSL licensing and niche domination.
-
-### Iteration 2: The Billionaire Sprints
+### Iteration 2: Foundations
 *2026-04-14*
-> "Creating the Disk Intelligence Category"
-
-**Achievements:**
-- ✅ **Standardization**: Rebranded and refactored for monopoly-level clarity.
-- ✅ **Dyson Scanner**: Physically impossible speed achieved via parallel BFS.
-- ✅ **Policy as Code**: YAML-driven disk governance implemented.
-- ✅ **Plugin SDK**: Shopify-style ecosystem launched with sample analyzers.
-- ✅ **Sleep Insurance**: Remediation reports designed for SRE peace of mind.
+- Parallel BFS scanner.
+- YAML policy engine.
+- Plugin SDK with sample analyzers.
+- Reversible remediation with `undo`.
 
 ---
 
-## 🧠 Developer Philosophy
-- **Speed is Physics**: If it's slow, it's broken.
-- **One Screen, One Action**: Ruthless clarity over data volume.
-- **Category over Tool**: We are building the standard word for disk.
-- **Transparency is a Moat**: Iterating in public, open handbook.
-
----
-
-*(This guide is updated with every release. Keep it close.)*
+*Updated with every release.*

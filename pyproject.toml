@@ -5,17 +5,29 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "dxcli"
 version = "0.3.0"
-description = "Intelligent disk diagnostics and storage observability for SREs"
+description = "The disk doctor for your CI pipeline and dev box — diagnose what filled the drive, which process did it, and fail fast in CI"
 authors = [
     {name = "Seshadri Naidu Vangapandu", email = "seshuvangapandu@gmail.com"}
 ]
 license = "MIT"
 readme = "README.md"
 requires-python = ">=3.8"
-keywords = ["disk", "diagnostics", "sre", "observability", "storage", "cli"]
+keywords = [
+    "disk",
+    "diagnostics",
+    "ci",
+    "ci-cd",
+    "github-actions",
+    "docker",
+    "devops",
+    "developer-tools",
+    "build",
+    "cli",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
+    "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
@@ -24,6 +36,8 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Quality Assurance",
     "Topic :: System :: Monitoring",
     "Topic :: System :: Systems Administration",
 ]

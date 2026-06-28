@@ -172,3 +172,81 @@ def test_diagnose_classify_runs(tmp_path):
     assert result.exit_code == 0
     assert "Semantic Usage" in result.output or "Category" in result.output
 
+
+def test_explain_runs(tmp_path):
+    result = runner.invoke(cli, ["explain", str(tmp_path)])
+    assert result.exit_code == 0
+    assert "is growing" in result.output or "is stable" in result.output
+    assert "Fix: " in result.output
+    assert "Root cause: " in result.output
+
+
+def test_predict_ranges_and_variance(tmp_path, mocker):
+    from dxcli.store.models import PredictionResult
+    import time
+
+    mocker.patch(
+        "dxcli.analyzers.DiskPredictor.predict_full_date",
+        return_value=PredictionResult(
+            path=str(tmp_path),
+            date_full_timestamp=None,
+            days_until_full=None,
+            current_capacity_bytes=1000000,
+            current_usage_bytes=500000,
+            daily_growth_bytes=200000,
+            is_accelerating=False,
+            days_until_full_low=None,
+            days_until_full_high=None,
+            hint="high variance"
+        )
+    )
+    result = runner.invoke(cli, ["predict", str(tmp_path)])
+    assert result.exit_code == 0
+    assert "Unpredictable (high variance)" in result.output
+
+    mocker.patch(
+        "dxcli.analyzers.DiskPredictor.predict_full_date",
+        return_value=PredictionResult(
+            path=str(tmp_path),
+            date_full_timestamp=time.time() + (6.0 * 86400),
+            days_until_full=6.0,
+            current_capacity_bytes=1000000,
+            current_usage_bytes=500000,
+            daily_growth_bytes=200000,
+            is_accelerating=True,
+            days_until_full_low=5.0,
+            days_until_full_high=7.0,
+            hint=None
+        )
+    )
+    result = runner.invoke(cli, ["predict", str(tmp_path)])
+    assert result.exit_code == 0
+    assert "5–7 days" in result.output or "5-7 days" in result.output
+
+    mocker.patch(
+        "dxcli.analyzers.DiskPredictor.predict_full_date",
+        return_value=PredictionResult(
+            path=str(tmp_path),
+            date_full_timestamp=time.time() + (400.0 * 86400),
+            days_until_full=400.0,
+            current_capacity_bytes=1000000,
+            current_usage_bytes=500000,
+            daily_growth_bytes=100,
+            is_accelerating=False,
+            days_until_full_low=390.0,
+            days_until_full_high=410.0,
+            hint=None
+        )
+    )
+    result = runner.invoke(cli, ["predict", str(tmp_path)])
+    assert result.exit_code == 0
+    assert "Stable (fills in >1 year)" in result.output
+
+
+def test_tui_app_instantiation():
+    from dxcli.outputs.tui import DxApp
+    app = DxApp(watch_mode=True, path=".", interval=5.0)
+    assert app.watch_mode is True
+    assert app.watch_interval == 5.0
+
+

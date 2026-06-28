@@ -48,13 +48,18 @@ DxApp {
 }
 
 #problems-box {
-    width: 50%;
+    width: 33%;
     border: round $warning;
 }
 
 #prescriptions-box {
-    width: 50%;
+    width: 33%;
     border: round $success;
+}
+
+#active-writers-box {
+    width: 34%;
+    border: round $accent;
 }
 
 DataTable {

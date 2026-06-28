@@ -1,0 +1,63 @@
+name: "dxcli disk guard"
+description: "Diagnose disk pressure on the runner before your build runs out of space."
+author: "Seshadri Naidu Vangapandu"
+branding:
+  icon: "hard-drive"
+  color: "blue"
+
+inputs:
+  path:
+    description: "Path to diagnose. Defaults to the workspace root."
+    required: false
+    default: "."
+  fail-on-critical:
+    description: "Exit 1 if disk is >=90% used or critical policy violations are found."
+    required: false
+    default: "true"
+  docker:
+    description: "Include Docker images, containers, volumes, and build cache in the diagnosis."
+    required: false
+    default: "true"
+  classify:
+    description: "Group disk usage by semantic category (node_modules, caches, build artifacts, ...)."
+    required: false
+    default: "false"
+  report:
+    description: "Optional path to write an HTML report (e.g. disk-report.html). Empty = no report."
+    required: false
+    default: ""
+  python-version:
+    description: "Python version to use when installing dxcli."
+    required: false
+    default: "3.12"
+  dxcli-version:
+    description: "Specific dxcli version to install (e.g. 0.3.0). Empty = latest."
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install dxcli
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.dxcli-version }}" ]; then
+          pip install "dxcli==${{ inputs.dxcli-version }}"
+        else
+          pip install dxcli
+        fi
+
+    - name: Run dxcli
+      shell: bash
+      run: |
+        args=()
+        if [ "${{ inputs.fail-on-critical }}" = "true" ]; then args+=(--ci); fi
+        if [ "${{ inputs.docker }}" = "true" ];           then args+=(--docker); fi
+        if [ "${{ inputs.classify }}" = "true" ];         then args+=(--classify); fi
+        if [ -n "${{ inputs.report }}" ];                  then args+=(--report "${{ inputs.report }}"); fi
+        dxcli diagnose "${{ inputs.path }}" "${args[@]}"

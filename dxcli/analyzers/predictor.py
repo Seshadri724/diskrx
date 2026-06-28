@@ -56,6 +56,20 @@ class DiskPredictor:
                 hint=None
             )
 
+        if daily_growth > 0 and s_growth > 0.5 * daily_growth:
+            return PredictionResult(
+                path=partition.mountpoint,
+                date_full_timestamp=None,
+                days_until_full=None,
+                current_capacity_bytes=partition.total_bytes,
+                current_usage_bytes=partition.used_bytes,
+                daily_growth_bytes=daily_growth,
+                is_accelerating=False,
+                days_until_full_low=None,
+                days_until_full_high=None,
+                hint="high variance"
+            )
+
         remaining_bytes = partition.total_bytes - partition.used_bytes
         days_until_full = remaining_bytes / daily_growth
         

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `dxcli explain` command to output plain-English narrative diagnostic summaries.
+- `ActiveWritersPanel` in the TUI to display processes with active write throughput.
+- Integration tests for `explain` command, prediction ranges/variance, and TUI app instantiation.
+
+### Changed
+- Converted `dxcli watch` to default to interactive TUI mode when run in a tty (disabled via `--no-tui` option).
+- Bounded prediction engine forecasts to suppress estimates beyond 365 days, and flag high-variance growth.
+- Improved write attribution process matching using `/proc/<pid>/io` delta sampling on Linux and `psutil.Process.io_counters` fallback.
+- Expanded GitHub actions workflow to test against numpy<1.25 and numpy>=2.0.0.
+
 ### Fixed
 - Removed leftover `diskrx` package name fallback from version resolution in `__init__.py`.
 - Replaced all decorative emojis in CLI output, HTML reports, TUI dashboard, and heal engine with text-only equivalents.
@@ -14,10 +25,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed path-prefix matching bug in `runtime.py` partition resolver — mount at `/var` no longer matches `/variable`.
 - Fixed Python 3.8 compatibility: replaced lowercase `tuple[...]` type hints with `Tuple[...]` from `typing` in `notifier.py`.
 - Added Windows case-insensitive path comparison to `heal_engine._is_safe_path()`, consistent with `policy_engine._path_in_scope()`.
-
-### Added
-- Regression test for process mapper path-prefix boundary check.
-- Integration test for `diagnose --classify` to prevent BUG-1 regression.
 
 ## [0.3.0] - 2026-05-12
 

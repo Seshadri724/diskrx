@@ -108,6 +108,18 @@ class AnomalyPanel(Static):
             else:
                 self.remove_class("pulse-warning")
 
+class ActiveWritersPanel(Static):
+    writers_text = reactive("Run scan to see throughput...")
+
+    def compose(self) -> ComposeResult:
+        yield Label("Active Writers", classes="header-text")
+        self.display_label = Label(self.writers_text)
+        yield self.display_label
+
+    def watch_writers_text(self, text: str) -> None:
+        if hasattr(self, "display_label"):
+            self.display_label.update(text)
+
 class DxApp(App):
     CSS_PATH = "tui.tcss"
     BINDINGS = [
@@ -118,6 +130,17 @@ class DxApp(App):
 
     is_scanning = reactive(False)
     
+    def __init__(self, watch_mode: bool = False, path: str = None, interval: float = 300.0, threshold_bytes: int = 0, webhook: str = None, notify_desktop: bool = False, scan_threads: int = None, **kwargs):
+        super().__init__(**kwargs)
+        self.watch_mode = watch_mode
+        self.scan_path = path or "."
+        self.watch_interval = interval
+        self.threshold_bytes = threshold_bytes
+        self.webhook = webhook
+        self.notify_desktop = notify_desktop
+        self.scan_threads = scan_threads
+        self.last_size = None
+
     def compose(self) -> ComposeResult:
         yield Header(name="dxcli — The Disk Doctor")
         
@@ -133,6 +156,7 @@ class DxApp(App):
         with Horizontal(id="bottom-panel"):
             yield ProblemsPanel(id="problems-box", classes="box")
             yield PrescriptionsPanel(id="prescriptions-box", classes="box")
+            yield ActiveWritersPanel(id="active-writers-box", classes="box")
             
         yield Footer()
 
@@ -140,6 +164,11 @@ class DxApp(App):
         self.query_one("#scan-spinner").display = False
         table = self.query_one("#consumers-table", DataTable)
         table.add_columns("Path", "Size", "Trend", "Process")
+        
+        if self.watch_mode:
+            self.set_interval(self.watch_interval, self.action_diagnose)
+            self.action_diagnose()
+            
         self.action_refresh()
 
     def action_refresh(self) -> None:
@@ -159,15 +188,21 @@ class DxApp(App):
         self.call_from_thread(self._show_spinner, True)
         
         try:
-            # 1. Get primary partition
-            parts = provider.get_partitions()
-            if not parts:
+            # 1. Get primary partition & path
+            if hasattr(self, "scan_path") and self.scan_path:
+                path = os.path.abspath(self.scan_path)
+            else:
+                parts = provider.get_partitions()
+                if not parts:
+                    return
+                path = parts[0].mountpoint
+            
+            primary = provider.get_partition_for_path(path)
+            if not primary:
                 return
-            primary = parts[0]
-            path = primary.mountpoint
             
             # 2. Run collectors
-            dir_collector = DirectoryTreeCollector()
+            dir_collector = DirectoryTreeCollector(max_threads=self.scan_threads if hasattr(self, "scan_threads") else None)
             top_dirs = dir_collector.scan(path)
             
             log_collector = LogFinderCollector()
@@ -208,12 +243,38 @@ class DxApp(App):
                 if res:
                     anomalies.append(res)
             
+            # 8. Active Writers Throughput Detection
+            from ..collectors.process_mapper import ProcessMapper
+            mapper = ProcessMapper()
+            active_writers = mapper.get_active_writers(path, interval=0.5)
+
+            # Watch mode alerting logic
+            current_size = sum(d.size_bytes for d in top_dirs)
+            if self.watch_mode and self.last_size is not None and self.threshold_bytes > 0:
+                delta = current_size - self.last_size
+                if delta > self.threshold_bytes:
+                    if self.webhook:
+                        from ..outputs.notifier import send_webhook
+                        payload = {
+                            "text": f"dxcli alert: Path '{path}' grew by {format_bytes(delta)} in {self.watch_interval}s.",
+                            "path": path,
+                            "delta_bytes": delta,
+                        }
+                        send_webhook(self.webhook, payload)
+                    if self.notify_desktop:
+                        from ..outputs.notifier import send_desktop_notification
+                        send_desktop_notification(
+                            "dxcli Disk Alert",
+                            f"Path '{path}' grew by {format_bytes(delta)}.",
+                        )
+            self.last_size = current_size
+
             db.close()
             
-            # 8. Update UI from thread
+            # 9. Update UI from thread
             self.call_from_thread(
                 self.update_results, top_dirs, correlated_trends,
-                logs, stales, pred, prescs, history_data, anomalies
+                logs, stales, pred, prescs, history_data, anomalies, active_writers
             )
             
         except Exception as e:
@@ -225,7 +286,7 @@ class DxApp(App):
     def _show_spinner(self, show: bool) -> None:
         self.query_one("#scan-spinner").display = show
 
-    def update_results(self, top_dirs, correlated_trends, logs, stales, pred, prescs, history_data, anomalies) -> None:
+    def update_results(self, top_dirs, correlated_trends, logs, stales, pred, prescs, history_data, anomalies, active_writers) -> None:
         # Update DataTable
         table = self.query_one("#consumers-table", DataTable)
         table.clear()
@@ -254,11 +315,35 @@ class DxApp(App):
                 
             table.add_row(d.path, format_bytes(d.size_bytes), trend_display, proc_str)
             
-        # Update Prediction
-        if pred and pred.days_until_full:
+        # Update Prediction - now showing confidence bands and checking for >365 days / stable
+        if pred and pred.days_until_full is not None:
+            if pred.days_until_full > 365:
+                self.query_one(PredictionPanel).prediction_text = (
+                    f"[~] Full in: Stable (>1 year)\n"
+                    f"Growth: {format_bytes(pred.daily_growth_bytes)}/day"
+                )
+            elif pred.days_until_full_low is not None and pred.days_until_full_high is not None:
+                low = int(round(pred.days_until_full_low))
+                high = int(round(pred.days_until_full_high))
+                if high > 365:
+                    self.query_one(PredictionPanel).prediction_text = (
+                        f"[~] Full in >= {low} days\n"
+                        f"Growth: {format_bytes(pred.daily_growth_bytes)}/day"
+                    )
+                else:
+                    self.query_one(PredictionPanel).prediction_text = (
+                        f"[~] Full in {low}–{high} days\n"
+                        f"Growth: {format_bytes(pred.daily_growth_bytes)}/day"
+                    )
+            else:
+                self.query_one(PredictionPanel).prediction_text = (
+                    f"[~] Full in {pred.days_until_full:.1f} days\n"
+                    f"Growth: {format_bytes(pred.daily_growth_bytes)}/day"
+                )
+        elif pred and pred.hint == "high variance":
             self.query_one(PredictionPanel).prediction_text = (
-                f"[~] Full in {pred.days_until_full:.1f} days\n"
-                f"Growth: {format_bytes(pred.daily_growth_bytes)}/day"
+                f"[~] Full in: Unpredictable\n"
+                f"Growth: {format_bytes(pred.daily_growth_bytes)}/day (high variance)"
             )
         else:
             self.query_one(PredictionPanel).prediction_text = "[~] Full in: N/A (Static)"
@@ -281,6 +366,16 @@ class DxApp(App):
         else:
             self.query_one(PrescriptionsPanel).prescriptions_text = "No prescriptions available."
 
+        # Update Active Writers
+        if active_writers:
+            writer_str = ""
+            for w in active_writers[:3]:
+                writer_str += f"{w['name']} (PID {w['pid']}): {format_bytes(int(w['throughput_bps']))}/s\n"
+            self.query_one(ActiveWritersPanel).writers_text = writer_str.strip()
+        else:
+            self.query_one(ActiveWritersPanel).writers_text = "No active writers detected."
+
 if __name__ == '__main__':
     app = DxApp()
     app.run()
+
