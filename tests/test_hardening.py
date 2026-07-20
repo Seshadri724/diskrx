@@ -1,7 +1,5 @@
-import os
-import pytest
 from click.testing import CliRunner
-from dxcli.cli import cli, serve
+from dxcli.cli import cli
 from dxcli.heal_engine import HealEngine
 from dxcli.outputs.notifier import send_webhook
 from dxcli.store.models import Prescription

@@ -1,6 +1,6 @@
 import os
 import tempfile
-import shutil
+
 
 def get_state_dir() -> str:
     """Returns the centralized, secure state directory for dxcli."""

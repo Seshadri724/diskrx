@@ -4,7 +4,7 @@ import urllib.request
 import urllib.error
 import socket
 import os
-from dxcli.outputs.notifier import validate_webhook_destination, send_webhook
+from dxcli.outputs.notifier import validate_webhook_destination
 
 def test_validate_webhook_destination_returns_ip():
     with patch("socket.getaddrinfo") as mock_dns:

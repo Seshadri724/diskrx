@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import List, Optional
 from ..store.models import Partition
 
 logger = logging.getLogger(__name__)

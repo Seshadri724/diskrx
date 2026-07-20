@@ -49,8 +49,21 @@ class GrowthTracker:
         if len(history) < 2:
             return 0.0, 0.0
 
+        # Filter out clustered snapshots (recorded < 30s apart when history has > 3 entries)
+        if len(history) > 3:
+            filtered = [history[0]]
+            for entry in history[1:]:
+                if entry['timestamp'] - filtered[-1]['timestamp'] >= 30:
+                    filtered.append(entry)
+            if len(filtered) >= 2:
+                history = filtered
+
         timestamps = np.array([h['timestamp'] for h in history])
         sizes = np.array([h['used_bytes'] for h in history])
+
+        time_span = max(timestamps) - min(timestamps)
+        if time_span <= 0:
+            return 0.0, 0.0
         
         with warnings.catch_warnings():
             warnings.simplefilter('error', RankWarning)

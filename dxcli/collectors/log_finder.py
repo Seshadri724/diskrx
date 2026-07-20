@@ -18,10 +18,23 @@ class LogFinderCollector:
         logs = []
         threshold_bytes = self.config.large_log_threshold_mb * 1024 * 1024
         
+        IGNORED_SYSTEM_DIRS = {
+            "$recycle.bin", "system volume information", "$winreagent", "config.msi",
+            "proc", "sys", "dev", "run", "windows"
+        }
+
         for root_path in paths:
-            # We use os.walk to find logs, handling permission errors
+            clean_root = os.path.abspath(root_path).rstrip("/\\")
+            is_drive_root = (len(clean_root) <= 3 or clean_root == "")
             try:
                 for dirpath, dirnames, filenames in os.walk(root_path):
+                    # Prune system and hidden directories instantly
+                    dirnames[:] = [d for d in dirnames if d.lower() not in IGNORED_SYSTEM_DIRS and not d.startswith("$")]
+                    if is_drive_root:
+                        rel_path = dirpath[len(clean_root):].lstrip("/\\")
+                        if rel_path and rel_path.count(os.sep) >= 2:
+                            dirnames.clear()
+
                     for filename in filenames:
                         # Simple naive check matching extension
                         if any(filename.endswith(ext.replace('*', '')) for ext in self.config.log_patterns):

@@ -817,7 +817,10 @@ def dash():
     """Launch the dxcli textual dashboard."""
     from .outputs.tui import DxApp
 
-    DxApp().run()
+    try:
+        DxApp().run()
+    except (KeyboardInterrupt, SystemExit):
+        pass
 
 
 @cli.command()
@@ -929,18 +932,86 @@ def daemon(action, command, target, notify_desktop, webhook):
 @click.argument("path", default=".")
 @click.option("--json", "as_json", is_flag=True, help="Emit fleet-ready host telemetry as JSON.")
 @click.option("--max-items", default=100, show_default=True, help="Maximum top dirs, logs, and stale files in output.")
-def snapshot(path, as_json, max_items):
+@click.option("--push", default=None, help="V1 receiver snapshot URL (e.g. http://localhost:8080/v1/snapshots)")
+@click.option("--token", default=None, help="Bearer authorization token.")
+@click.option("--anonymize", is_flag=True, help="Anonymize user directories and hostname in telemetry.")
+def snapshot(path, as_json, max_items, push, token, anonymize):
     """Collect a fleet-ready local host telemetry snapshot."""
     from .enterprise import AgentSnapshotCollector
     from .outputs.cli_report import format_bytes
 
     if max_items < 1:
         fail("--max-items must be greater than 0.", ExitCode.VALIDATION_ERROR)
-    snapshot_data = AgentSnapshotCollector().collect(path)
+
+    if push and not token:
+        token = os.environ.get("DX_API_TOKEN")
+        if not token:
+            fail("Providing a --push URL requires --token or env DX_API_TOKEN.", ExitCode.VALIDATION_ERROR)
+
+    snapshot_data = AgentSnapshotCollector().collect(path, anonymize=anonymize)
     snapshot_data.top_dirs = snapshot_data.top_dirs[:max_items]
     snapshot_data.logs = snapshot_data.logs[:max_items]
     snapshot_data.stales = snapshot_data.stales[:max_items]
     snapshot_data.risk_signals = snapshot_data.risk_signals[:max_items]
+
+    if push:
+        from .outputs.notifier import validate_webhook_destination, NoRedirectHandler, PinnedHTTPHandler, PinnedHTTPSHandler
+        import ssl
+        import urllib.request
+        import urllib.error
+
+        is_valid, error, pinned_ip = validate_webhook_destination(push, allow_private=(os.environ.get("DX_ALLOW_PRIVATE_INGEST") == "1"))
+        if not is_valid:
+            fail(f"Invalid push destination URL: {error}", ExitCode.VALIDATION_ERROR)
+
+        payload_bytes = json.dumps(asdict(snapshot_data)).encode('utf-8')
+        req = urllib.request.Request(
+            push,
+            data=payload_bytes,
+            headers={
+                'Content-Type': 'application/json',
+                'User-Agent': f'dxcli-agent/{__version__}',
+                'Authorization': f'Bearer {token}'
+            },
+            method='POST'
+        )
+
+        context = ssl.create_default_context()
+        handlers = [
+            NoRedirectHandler(),
+            PinnedHTTPHandler(pinned_ip),
+            PinnedHTTPSHandler(pinned_ip, context=context)
+        ]
+        opener = urllib.request.build_opener(*handlers)
+
+        max_retries = 3
+        backoff = 0.5
+        last_error = None
+
+        for attempt in range(max_retries):
+            try:
+                with opener.open(req, timeout=10.0) as response:
+                    if response.status in (200, 201, 202, 204):
+                        if not as_json:
+                            console.print(f"[bold green]Snapshot successfully pushed to {push}[/bold green]")
+                        return
+                    if response.status not in (429, 502, 503, 504):
+                        fail(f"Push failed with HTTP status: {response.status}", ExitCode.RUNTIME_ERROR)
+                    last_error = f"HTTP {response.status}"
+            except urllib.error.HTTPError as e:
+                if e.code not in (429, 502, 503, 504):
+                    fail(f"Push failed with HTTP status: {e.code}", ExitCode.RUNTIME_ERROR)
+                last_error = f"HTTP {e.code}"
+            except urllib.error.URLError as e:
+                last_error = f"Network error: {e.reason}"
+            except Exception as e:
+                last_error = f"Error: {e}"
+
+            if attempt < max_retries - 1:
+                time.sleep(backoff * (2 ** attempt))
+
+        fail(f"Push failed after {max_retries} attempts: {last_error}", ExitCode.RUNTIME_ERROR)
+
     if as_json:
         print(json.dumps(asdict(snapshot_data), indent=2))
         return
@@ -978,13 +1049,81 @@ def snapshot(path, as_json, max_items):
 @cli.command()
 @click.argument("hosts", nargs=-1)
 @click.option("--port", default=8000, help="Port of dxcli serve instances")
-def fleet(hosts, port):
-    """Aggregate metrics from multiple dxcli serve instances."""
+@click.option("--server", default=None, help="Fleet receiver server URL (e.g. http://localhost:8080)")
+@click.option("--token", default=None, help="Auth token for fleet server")
+def fleet(hosts, port, server, token):
+    """Aggregate metrics from multiple dxcli serve instances or a fleet server."""
     import urllib.error
     import urllib.request
+    import json
 
-    if not hosts:
-        fail("Usage: dxcli fleet host1 host2 ...", ExitCode.VALIDATION_ERROR)
+    if not server and not hosts:
+        fail("Usage: dxcli fleet host1 host2 ... OR dxcli fleet --server <url>", ExitCode.VALIDATION_ERROR)
+
+    if server:
+        if not token:
+            token = os.environ.get("DX_API_TOKEN")
+
+        from .outputs.notifier import validate_webhook_destination, NoRedirectHandler, PinnedHTTPHandler, PinnedHTTPSHandler
+        import ssl
+
+        url = f"{server.rstrip('/')}/v1/fleet/status"
+        is_valid, error, pinned_ip = validate_webhook_destination(url, allow_private=(os.environ.get("DX_ALLOW_PRIVATE_INGEST") == "1"))
+        if not is_valid:
+            fail(f"Invalid fleet server URL: {error}", ExitCode.VALIDATION_ERROR)
+
+        req = urllib.request.Request(
+            url,
+            headers={
+                'Accept': 'application/json',
+                'User-Agent': 'dxcli-agent',
+            },
+            method='GET'
+        )
+        if token:
+            req.add_header('Authorization', f'Bearer {token}')
+
+        context = ssl.create_default_context()
+        handlers = [
+            NoRedirectHandler(),
+            PinnedHTTPHandler(pinned_ip),
+            PinnedHTTPSHandler(pinned_ip, context=context)
+        ]
+        opener = urllib.request.build_opener(*handlers)
+
+        try:
+            with opener.open(req, timeout=5.0) as response:
+                if response.status != 200:
+                    fail(f"Fleet server query failed with HTTP status: {response.status}", ExitCode.RUNTIME_ERROR)
+                data = json.loads(response.read().decode('utf-8'))
+        except urllib.error.URLError as e:
+            fail(f"Fleet query failed (network error): {e.reason}", ExitCode.RUNTIME_ERROR)
+        except Exception as e:
+            fail(f"Fleet query failed (error): {e}", ExitCode.RUNTIME_ERROR)
+
+        table = Table(title="[bold white]dxcli Central Fleet Dashboard[/bold white]", box=ROUNDED)
+        table.add_column("Host", style="cyan")
+        table.add_column("Partition", style="white")
+        table.add_column("Usage", justify="right")
+        table.add_column("Status", justify="center")
+
+        for host_info in data.get("hosts", []):
+            host_name = host_info.get("hostname", "unknown")
+            partitions = host_info.get("partitions", [])
+            risk_level = host_info.get("risk_level", "healthy")
+
+            status_color = "red" if risk_level == "critical" else "yellow" if risk_level == "warning" else "green"
+            status_str = f"[{status_color}]{risk_level.upper()}[/{status_color}]"
+
+            if not partitions:
+                table.add_row(host_name, "---", "---", status_str)
+            for part in partitions:
+                usage = part.get("usage_percent", 0.0)
+                usage_color = "red" if usage > 90 else "yellow" if usage > 75 else "green"
+                table.add_row(host_name, part.get("mountpoint", "/"), f"[{usage_color}]{usage:.1f}%[/{usage_color}]", status_str)
+
+        console.print(table)
+        return
 
     table = Table(title="[bold white]dxcli Fleet Dashboard[/bold white]", box=ROUNDED)
     table.add_column("Host", style="cyan")
@@ -1134,6 +1273,23 @@ def trust(path):
             fail(f"Failed to write to allowlist: {e}", ExitCode.RUNTIME_ERROR)
 
 
+def main():
+    try:
+        cli(standalone_mode=False)
+    except (KeyboardInterrupt, click.exceptions.Abort):
+        console.print("\n[yellow]Operation cancelled by user.[/yellow]")
+        sys.exit(130)
+    except click.exceptions.ClickException as e:
+        e.show()
+        sys.exit(e.exit_code)
+    except DxCliError as e:
+        console.print(f"[bold red]Error:[/bold red] {e.message}")
+        sys.exit(int(e.code))
+    except Exception as e:
+        console.print(f"[bold red]Unexpected Error:[/bold red] {e}")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    cli()
+    main()
 

@@ -1,6 +1,6 @@
 import psutil
 import os
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 from dataclasses import dataclass
 
 @dataclass
@@ -11,6 +11,20 @@ class ProcessRef:
     mode: str = "unknown"
     files: List[str] = None
 
+SYSTEM_PROCESS_NAMES = {
+    "system", "idle", "registry", "memory compression", "smss.exe", "csrss.exe",
+    "wininit.exe", "services.exe", "lsass.exe", "svchost.exe", "fontdrvhost.exe",
+    "wuauclt.exe", "searchindexer.exe", "spoolsv.exe", "ctfmon.exe", "sihost.exe",
+    "systemsettings.exe", "securityhealthservice.exe", "audiodg.exe", "conhost.exe"
+}
+
+DEV_APP_KEYWORDS = [
+    "python", "node", "java", "go", "rust", "git", "docker", "code", "chrome",
+    "firefox", "idea", "webstorm", "pycharm", "clion", "wsl", "bash", "zsh",
+    "powershell", "cmd", "postgres", "mysql", "redis", "nginx", "apache",
+    "cargo", "npm", "yarn", "pnpm", "pip", "dotnet", "ruby", "php"
+]
+
 class ProcessMapper:
     """
     Identifies which processes have open file handles in specific directories.
@@ -19,28 +33,79 @@ class ProcessMapper:
     def __init__(self):
         self._process_cache: Optional[Dict[int, List[str]]] = None
 
+    def _inspect_process(self, proc) -> Optional[Tuple[int, Dict[str, Any]]]:
+        try:
+            pid = proc.info['pid']
+            if pid <= 4:
+                return None
+            name = (proc.info['name'] or "").lower()
+            if name in SYSTEM_PROCESS_NAMES or any(sys_p in name for sys_p in ["system", "svchost", "service", "helper", "agent", "wmiprv", "search"]):
+                return None
+            
+            # Fast filter: only inspect processes that are potential dev/user applications
+            if not any(kw in name for kw in DEV_APP_KEYWORDS):
+                return None
+
+            files = proc.open_files()
+            if files:
+                paths = [f.path for f in files]
+                modes = [getattr(f, 'mode', 'unknown') for f in files]
+                try:
+                    cmd = proc.cmdline()
+                except Exception:
+                    cmd = []
+                return pid, {
+                    'name': proc.info['name'],
+                    'cmdline': cmd,
+                    'paths': paths,
+                    'modes': modes
+                }
+        except Exception:
+            return None
+        return None
+
     def _build_cache(self):
-        """Scan all processes once and cache their open file paths and modes."""
+        """Scan processes in parallel with strict process limit and timeout."""
         self._process_cache = {}
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        import concurrent.futures
+        try:
+            procs = list(psutil.process_iter(['pid', 'name']))
+        except Exception:
+            return
+
+        # Filter candidate user/developer processes
+        candidates = []
+        for p in procs:
             try:
-                files = proc.open_files()
-                if files:
-                    paths = []
-                    modes = []
-                    for f in files:
-                        paths.append(f.path)
-                        modes.append(getattr(f, 'mode', 'unknown'))
-                    self._process_cache[proc.info['pid']] = {
-                        'name': proc.info['name'],
-                        'cmdline': proc.info['cmdline'] or [],
-                        'paths': paths,
-                        'modes': modes
-                    }
-            except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
-                continue
+                pid = p.info['pid']
+                if pid <= 4:
+                    continue
+                name = (p.info['name'] or "").lower()
+                if name in SYSTEM_PROCESS_NAMES or any(sys_p in name for sys_p in ["system", "svchost", "service", "helper", "agent", "wmiprv", "search"]):
+                    continue
+                if any(kw in name for kw in DEV_APP_KEYWORDS):
+                    candidates.append(p)
             except Exception:
                 continue
+
+        # Cap candidate inspection to top 8 active developer processes for sub-second runtime
+        candidates = candidates[:8]
+
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+        try:
+            futures = [executor.submit(self._inspect_process, p) for p in candidates]
+            for future in concurrent.futures.as_completed(futures, timeout=0.5):
+                try:
+                    res = future.result()
+                    if res:
+                        pid, info = res
+                        self._process_cache[pid] = info
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
     def find_culprits(self, directory_path: str, write_only: bool = True) -> List[ProcessRef]:
         """

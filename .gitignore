@@ -159,6 +159,7 @@ cython_debug/
 # Project specific
 history.db
 history.db-journal
+*.db
 .dx/
 
 # Project-specific internal docs (not for distribution)
@@ -170,3 +171,4 @@ COMMANDS_PLAYBOOK.md
 diskrx-0.1.0/
 my_report.html
 test_report.html
+report.html

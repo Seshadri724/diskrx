@@ -3,6 +3,11 @@ import concurrent.futures
 from typing import List, Tuple
 from ..store.models import DirNode
 
+IGNORED_SYSTEM_DIRS = {
+    "$recycle.bin", "system volume information", "$winreagent", "config.msi",
+    "proc", "sys", "dev", "run", "hiberfil.sys", "pagefile.sys", "swapfile.sys"
+}
+
 class DirectoryTreeCollector:
     """
     High-concurrency directory scanner.
@@ -15,7 +20,6 @@ class DirectoryTreeCollector:
         self.max_threads = max_threads
         self.max_depth = max_depth
 
-
     def scan(self, root_path: str) -> List[DirNode]:
         """
         Scans top-level directories of root_path to identify storage consumers.
@@ -23,18 +27,29 @@ class DirectoryTreeCollector:
         If max_depth is set, descends at most that many levels below root_path.
         """
         results = []
+        clean_root = os.path.abspath(root_path).rstrip("/\\")
+        is_drive_root = (len(clean_root) <= 3 or clean_root == "")
+        
+        # Default depth limit for drive roots to ensure fast performance (< 2 seconds)
+        effective_depth = self.max_depth
+        if effective_depth is None and is_drive_root:
+            effective_depth = 3
+
         try:
             root_entries = list(os.scandir(root_path))
         except (OSError, PermissionError):
             return []
 
-        # We only report top-level children of root_path
-        target_dirs = [e for e in root_entries if e.is_dir() and not e.is_symlink()]
+        # We only report top-level children of root_path, filtering system bloat
+        target_dirs = [
+            e for e in root_entries
+            if e.is_dir() and not e.is_symlink() and e.name.lower() not in IGNORED_SYSTEM_DIRS and not e.name.startswith("$")
+        ]
         
         # Parallelize the heavy lifting of calculating sizes for each top-level dir
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_threads) as executor:
             # Each top-level child starts at depth=1
-            remaining_depth = (self.max_depth - 1) if self.max_depth is not None else None
+            remaining_depth = (effective_depth - 1) if effective_depth is not None else None
             future_to_path = {
                 executor.submit(self._calculate_dir_stats, d.path, remaining_depth): d.path
                 for d in target_dirs
@@ -71,6 +86,8 @@ class DirectoryTreeCollector:
                                 continue
                             
                             if entry.is_dir():
+                                if entry.name.lower() in IGNORED_SYSTEM_DIRS or entry.name.startswith("$"):
+                                    continue
                                 # Only descend if depth allows
                                 if depth_left is None:
                                     stack.append((entry.path, None))
@@ -86,4 +103,5 @@ class DirectoryTreeCollector:
                 continue
                 
         return total_size, total_count
+
 

@@ -140,10 +140,12 @@ class AgentSnapshotCollector:
             errors.append(CollectorError(collector=name, message=str(exc)))
             return default
 
-    def collect(self, path: str = ".") -> HostSnapshot:
+    def collect(self, path: str = ".", anonymize: bool = False) -> HostSnapshot:
         from .collectors.dir_tree import DirectoryTreeCollector
         from .collectors.log_finder import LogFinderCollector
         from .collectors.stale_files import StaleFileCollector
+        import hashlib
+        import re
 
         scan_path = os.path.abspath(path)
         collector_errors: List[CollectorError] = []
@@ -180,7 +182,7 @@ class AgentSnapshotCollector:
         signals = build_risk_signals(partitions, top_dirs, violations, scan_path)
         score = max((signal.score for signal in signals), default=0)
 
-        return HostSnapshot(
+        snapshot = HostSnapshot(
             schema_version=SCHEMA_VERSION,
             host_id=self._host_id(),
             hostname=socket.gethostname(),
@@ -197,3 +199,44 @@ class AgentSnapshotCollector:
             risk_level=risk_level(score),
             collector_errors=collector_errors,
         )
+
+        if anonymize or os.environ.get("DX_ANONYMIZE_TELEMETRY") == "1":
+            def scrub_path(p: str) -> str:
+                if not p:
+                    return p
+                # Handle Windows C:\Users\username and Unix /home/username or /Users/username (with slash abstraction)
+                p = re.sub(r'(?i)([a-zA-Z]:\\Users\\)([^\\]+)', r'\1[redacted]', p)
+                p = re.sub(r'(?i)(/Users/)([^/]+)', r'\1[redacted]', p)
+                p = re.sub(r'(?i)(/home/|\\home\\)([^/\\]+)', r'\1[redacted]', p)
+                return p
+
+            # Anonymize hostname via hashing
+            raw_host = snapshot.hostname
+            snapshot.hostname = "host-" + hashlib.sha256(raw_host.encode('utf-8')).hexdigest()[:12]
+            snapshot.scan_path = scrub_path(snapshot.scan_path)
+
+            for part in snapshot.partitions:
+                part.mountpoint = scrub_path(part.mountpoint)
+
+            for d in snapshot.top_dirs:
+                d.path = scrub_path(d.path)
+
+            for l in snapshot.logs:
+                l.path = scrub_path(l.path)
+
+            for s in snapshot.stales:
+                s.path = scrub_path(s.path)
+
+            for v in snapshot.policy_violations:
+                v.path = scrub_path(v.path)
+                v.message = scrub_path(v.message)
+
+            for r in snapshot.risk_signals:
+                if r.path:
+                    r.path = scrub_path(r.path)
+                r.message = scrub_path(r.message)
+
+            for e in snapshot.collector_errors:
+                e.message = scrub_path(e.message)
+
+        return snapshot

@@ -123,10 +123,10 @@ class HealEngine:
         return True
 
     def _safe_backup_id(self, prescription_id: str) -> str:
-        token = _SAFE_BACKUP_TOKEN.sub("_", str(prescription_id)).strip("._")
-        if not token:
-            token = "prescription"
-        return f"backup_{int(time.time())}_{token[:80]}"
+        item_tag = _SAFE_BACKUP_TOKEN.sub("_", str(prescription_id)).strip("._")
+        if not item_tag:
+            item_tag = "item"
+        return f"backup_{int(time.time())}_{item_tag[:80]}"
 
     def _validated_target_stat(self, target_path: str):
         if not self._is_safe_path(target_path):

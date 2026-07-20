@@ -49,11 +49,15 @@ class PartitionPanel(Static):
 
     def watch_partitions(self, parts: list[Partition]) -> None:
         out_str = ""
+        is_sr = getattr(self, "app", None) and getattr(self.app, "screen_reader", False)
         for p in parts:
-            width = 20
-            filled = int((p.usage_percent / 100) * width)
-            bar = ("█" * filled) + ("░" * (width - filled))
-            out_str += f"{p.mountpoint:<6} {bar} {p.usage_percent:5.1f}%\n"
+            if is_sr:
+                out_str += f"{p.mountpoint:<6}: {p.usage_percent:.1f}% full\n"
+            else:
+                width = 20
+                filled = int((p.usage_percent / 100) * width)
+                bar = ("█" * filled) + ("░" * (width - filled))
+                out_str += f"{p.mountpoint:<6} {bar} {p.usage_percent:5.1f}%\n"
         self.display_label.update(out_str if out_str else "No partitions found.")
 
 class PredictionPanel(Static):
@@ -246,7 +250,7 @@ class DxApp(App):
             # 8. Active Writers Throughput Detection
             from ..collectors.process_mapper import ProcessMapper
             mapper = ProcessMapper()
-            active_writers = mapper.get_active_writers(path, interval=0.5)
+            active_writers = mapper.get_active_writers(path, interval=0.1)
 
             # Watch mode alerting logic
             current_size = sum(d.size_bytes for d in top_dirs)
@@ -310,8 +314,11 @@ class DxApp(App):
             
             # String-based sparkline (no widget crash)
             hist = history_data.get(d.path, [])
-            spark = sparkline_str(hist)
-            trend_display = f"{trend_str} {spark}" if spark != "—" else trend_str
+            if getattr(self, "screen_reader", False) or (getattr(self, "app", None) and getattr(self.app, "screen_reader", False)):
+                trend_display = trend_str
+            else:
+                spark = sparkline_str(hist)
+                trend_display = f"{trend_str} {spark}" if spark != "—" else trend_str
                 
             table.add_row(d.path, format_bytes(d.size_bytes), trend_display, proc_str)
             

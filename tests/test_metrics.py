@@ -1,5 +1,4 @@
 from dxcli.outputs.metrics import MetricsHandler, prometheus_label_value
-from http.server import HTTPServer
 import threading
 # import requests  # Removed to maintain zero-dependency
 
