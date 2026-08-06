@@ -64,9 +64,9 @@ server = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Seshadri724/dxcli"
-Repository = "https://github.com/Seshadri724/dxcli"
-Issues = "https://github.com/Seshadri724/dxcli/issues"
+Homepage = "https://github.com/Seshadri724/diskrx"
+Repository = "https://github.com/Seshadri724/diskrx"
+Issues = "https://github.com/Seshadri724/diskrx/issues"
 
 [project.scripts]
 dxcli = "dxcli.cli:main"

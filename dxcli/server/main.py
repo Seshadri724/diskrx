@@ -9,7 +9,9 @@ from fastapi import FastAPI, HTTPException, Depends, Security, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 # Setup logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
 logger = logging.getLogger("dxcli.server")
 
 # Maximum accepted payload size: 1 MB
@@ -83,10 +85,12 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Security(security))
     expected_token = os.environ.get("DX_API_TOKEN")
 
     if not expected_token:
-        logger.error("Security configuration error: DX_API_TOKEN is not configured on the server.")
+        logger.error(
+            "Security configuration error: DX_API_TOKEN is not configured on the server."
+        )
         raise HTTPException(
             status_code=500,
-            detail="Server security configuration error: auth token is missing"
+            detail="Server security configuration error: auth token is missing",
         )
 
     if not secrets.compare_digest(token, expected_token):
@@ -94,8 +98,6 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Security(security))
         raise HTTPException(status_code=401, detail="Invalid token")
 
     return token
-
-
 
 
 async def validate_snapshot_payload(request: Request) -> dict:
@@ -107,13 +109,18 @@ async def validate_snapshot_payload(request: Request) -> dict:
     if content_length:
         try:
             if int(content_length) > MAX_PAYLOAD_BYTES:
-                raise HTTPException(status_code=413, detail=f"Payload exceeds {MAX_PAYLOAD_BYTES} byte limit")
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Payload exceeds {MAX_PAYLOAD_BYTES} byte limit",
+                )
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid Content-Length header")
 
     body = await request.body()
     if len(body) > MAX_PAYLOAD_BYTES:
-        raise HTTPException(status_code=413, detail=f"Payload exceeds {MAX_PAYLOAD_BYTES} byte limit")
+        raise HTTPException(
+            status_code=413, detail=f"Payload exceeds {MAX_PAYLOAD_BYTES} byte limit"
+        )
 
     try:
         snapshot = _json.loads(body)
@@ -129,7 +136,10 @@ async def validate_snapshot_payload(request: Request) -> dict:
 
     # SEC: Validate host_id format to prevent log injection (CWE-117)
     if not isinstance(host_id, str) or not _HOST_ID_PATTERN.match(host_id):
-        raise HTTPException(status_code=400, detail="Invalid host_id format. Must be 1-128 alphanumeric characters, hyphens, or underscores.")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid host_id format. Must be 1-128 alphanumeric characters, hyphens, or underscores.",
+        )
 
     return snapshot
 
@@ -138,7 +148,7 @@ async def validate_snapshot_payload(request: Request) -> dict:
 def receive_snapshot(
     token: str = Depends(verify_token),
     snapshot: dict = Depends(validate_snapshot_payload),
-    db: sqlite3.Connection = Depends(get_db)
+    db: sqlite3.Connection = Depends(get_db),
 ):
     host_id = snapshot["host_id"]
     hostname = str(snapshot.get("hostname", "unknown"))[:256]
@@ -149,14 +159,23 @@ def receive_snapshot(
 
     # SEC: Sanitize log output -- strip newlines to prevent log injection
     safe_hostname = hostname.replace("\n", "").replace("\r", "")
-    logger.info("Ingesting snapshot for host=%s (id=%s, risk=%s/%d)", safe_hostname, host_id, risk_level, risk_score)
+    logger.info(
+        "Ingesting snapshot for host=%s (id=%s, risk=%s/%d)",
+        safe_hostname,
+        host_id,
+        risk_level,
+        risk_score,
+    )
 
     try:
         cur = db.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             INSERT OR REPLACE INTO hosts (host_id, hostname, platform, risk_level, risk_score, last_seen_at)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, (host_id, hostname, platform, risk_level, risk_score, timestamp))
+        """,
+            (host_id, hostname, platform, risk_level, risk_score, timestamp),
+        )
 
         # Clear old partitions for this host
         cur.execute("DELETE FROM partitions WHERE host_id = ?", (host_id,))
@@ -176,23 +195,36 @@ def receive_snapshot(
             free_bytes = int(part.get("free_bytes", 0))
             usage_percent = float(part.get("usage_percent", 0.0))
 
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT OR REPLACE INTO partitions (host_id, device, mountpoint, fstype, total_bytes, used_bytes, free_bytes, usage_percent)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (host_id, device, mountpoint, fstype, total_bytes, used_bytes, free_bytes, usage_percent))
+            """,
+                (
+                    host_id,
+                    device,
+                    mountpoint,
+                    fstype,
+                    total_bytes,
+                    used_bytes,
+                    free_bytes,
+                    usage_percent,
+                ),
+            )
 
         db.commit()
     except Exception:
         logger.exception("Database insertion failed for host=%s", host_id)
-        raise HTTPException(status_code=500, detail="Internal storage insertion failure")
+        raise HTTPException(
+            status_code=500, detail="Internal storage insertion failure"
+        )
 
     return {"status": "accepted"}
 
 
 @app.get("/v1/fleet/status")
 def get_fleet_status(
-    token: str = Depends(verify_token),
-    db: sqlite3.Connection = Depends(get_db)
+    token: str = Depends(verify_token), db: sqlite3.Connection = Depends(get_db)
 ):
     logger.info("Fleet status query requested.")
     try:
@@ -201,10 +233,14 @@ def get_fleet_status(
         hosts = [dict(row) for row in cur.fetchall()]
 
         for host in hosts:
-            cur.execute("SELECT * FROM partitions WHERE host_id = ?", (host["host_id"],))
+            cur.execute(
+                "SELECT * FROM partitions WHERE host_id = ?", (host["host_id"],)
+            )
             host["partitions"] = [dict(row) for row in cur.fetchall()]
     except Exception:
         logger.exception("Failed to query fleet status from database")
-        raise HTTPException(status_code=500, detail="Internal storage retrieval failure")
+        raise HTTPException(
+            status_code=500, detail="Internal storage retrieval failure"
+        )
 
     return {"hosts": hosts}

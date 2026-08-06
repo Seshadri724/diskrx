@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import yaml
 
@@ -36,6 +36,7 @@ class Config:
         """
         try:
             from .state import get_state_dir
+
             config_path = os.path.join(get_state_dir(), "config.yaml")
         except Exception as e:
             logger.warning("Could not resolve state directory: %s. Using defaults.", e)
@@ -61,7 +62,11 @@ class Config:
                     except TypeError as e:
                         logger.warning("Skipping malformed target '%s': %s", name, e)
                 else:
-                    logger.warning("Skipping target '%s': expected a mapping, got %s", name, type(t_data))
+                    logger.warning(
+                        "Skipping target '%s': expected a mapping, got %s",
+                        name,
+                        type(t_data),
+                    )
             data["targets"] = parsed_targets
 
             # Remove keys not in the dataclass to avoid TypeError
@@ -105,6 +110,7 @@ class Config:
 
 
 _DEFAULT_CONFIG = None
+
 
 def get_config() -> "Config":
     global _DEFAULT_CONFIG

@@ -1,83 +1,94 @@
-/* tui.tcss */
+/* dxcli dashboard — "Midnight" theme
+   Vibrant, high-clarity terminal UI: deep background, per-zone accent borders,
+   colour carried by content (usage bars, trend arrows, forecasts). */
 
 DxApp {
     layout: vertical;
-    background: $background;
+    background: #0B0E14;
+    color: #C9D1D9;
 }
 
+Header {
+    background: #0B0E14;
+    color: #22D3EE;
+    text-style: bold;
+}
+
+Footer {
+    background: #10151E;
+    color: #6E7681;
+}
+
+/* ── Panels ──────────────────────────────────────────── */
+.box {
+    margin: 1;
+    padding: 1 2;
+    border: round #30363D;
+    background: #151A23;
+}
+
+.header-text {
+    text-align: center;
+    text-style: bold;
+    color: #E6EDF3;
+    padding-bottom: 1;
+}
+
+/* Per-zone accent borders (classes, so .pulse-warning can still win) */
+.accent-cyan   { border: round #22D3EE; }
+.accent-blue   { border: round #60A5FA; }
+.accent-violet { border: round #C084FC; }
+.accent-amber  { border: round #FBBF24; }
+.accent-green  { border: round #34D399; }
+.accent-purple { border: round #A78BFA; }
+
+/* Accent-matched panel titles */
+.accent-cyan   .header-text { color: #22D3EE; }
+.accent-blue   .header-text { color: #60A5FA; }
+.accent-violet .header-text { color: #C084FC; }
+.accent-amber  .header-text { color: #FBBF24; }
+.accent-green  .header-text { color: #34D399; }
+.accent-purple .header-text { color: #A78BFA; }
+
+/* Defined AFTER the accents so it overrides the border on alert */
+.pulse-warning {
+    border: heavy #F87171;
+    color: #F87171;
+    text-style: bold;
+}
+
+/* ── Layout regions ──────────────────────────────────── */
 #top-panel {
-    height: 12;
+    height: 13;
     layout: horizontal;
     dock: top;
 }
-
-.box {
-    margin: 1;
-    padding: 1;
-    border: round $primary;
-    background: $panel;
-}
-
-#partitions-box {
-    width: 33%;
-}
-
-#prediction-box {
-    width: 33%;
-}
-
-#anomaly-box {
-    width: 34%;
-}
-
-.pulse-warning {
-    border: double $error;
-    color: $error;
-    text-style: bold;
-}
+#partitions-box { width: 33%; }
+#prediction-box { width: 33%; }
+#anomaly-box    { width: 34%; }
 
 #middle-panel {
     height: 1fr;
     margin: 0 1;
 }
 
+#consumers-table {
+    border: round #30363D;
+    background: #0F141C;
+    color: #C9D1D9;
+}
+
 #bottom-panel {
-    height: 12;
+    height: 13;
     layout: horizontal;
     dock: bottom;
 }
-
-#problems-box {
-    width: 33%;
-    border: round $warning;
-}
-
-#prescriptions-box {
-    width: 33%;
-    border: round $success;
-}
-
-#active-writers-box {
-    width: 34%;
-    border: round $accent;
-}
-
-DataTable {
-    border: round $secondary;
-}
-
-Label {
-    padding-bottom: 1;
-}
+#problems-box       { width: 33%; }
+#prescriptions-box  { width: 33%; }
+#active-writers-box { width: 34%; }
 
 #scan-spinner {
     height: 3;
     content-align: center middle;
-    color: $accent;
-}
-
-.header-text {
-    text-align: center;
-    text-style: bold;
-    color: $accent;
+    color: #22D3EE;
 }

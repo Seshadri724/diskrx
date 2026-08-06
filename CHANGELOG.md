@@ -5,30 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-07-21
 
 ### Added
 - `dxcli explain` command to output plain-English narrative diagnostic summaries.
 - `ActiveWritersPanel` in the TUI to display processes with active write throughput.
 - Integration tests for `explain` command, prediction ranges/variance, and TUI app instantiation.
-
-### Changed
-- Converted `dxcli watch` to default to interactive TUI mode when run in a tty (disabled via `--no-tui` option).
-- Bounded prediction engine forecasts to suppress estimates beyond 365 days, and flag high-variance growth.
-- Improved write attribution process matching using `/proc/<pid>/io` delta sampling on Linux and `psutil.Process.io_counters` fallback.
-- Expanded GitHub actions workflow to test against numpy<1.25 and numpy>=2.0.0.
-
-### Fixed
-- Removed leftover `diskrx` package name fallback from version resolution in `__init__.py`.
-- Replaced all decorative emojis in CLI output, HTML reports, TUI dashboard, and heal engine with text-only equivalents.
-- Fixed path-prefix matching bug in `process_mapper.py` (same class as P0-6 policy engine fix) — `/var/log` no longer matches `/var/logbomb`.
-- Fixed path-prefix matching bug in `runtime.py` partition resolver — mount at `/var` no longer matches `/variable`.
-- Fixed Python 3.8 compatibility: replaced lowercase `tuple[...]` type hints with `Tuple[...]` from `typing` in `notifier.py`.
-- Added Windows case-insensitive path comparison to `heal_engine._is_safe_path()`, consistent with `policy_engine._path_in_scope()`.
-
-## [0.3.0] - 2026-05-12
-
-### Added
 - **Plugin Opt-In**: Community plugins are now disabled by default. Use `--enable-plugins` to run them safely.
 - **Centralized State**: Created `dxcli/state.py` for atomic writes and strict directory permissions (`0700` dirs, `0600` files).
 - **Heal Engine Scoping**: `heal` now strictly verifies that target paths are within the explicitly scanned scope and rejects symlink escapes.
@@ -38,10 +20,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Static Quality Gates**: Added `flake8`, `black`, and `bandit` to the dev dependencies and updated workflow documentation.
 
 ### Changed
+- Converted `dxcli watch` to default to interactive TUI mode when run in a tty (disabled via `--no-tui` option).
+- Bounded prediction engine forecasts to suppress estimates beyond 365 days, and flag high-variance growth.
+- Improved write attribution process matching using `/proc/<pid>/io` delta sampling on Linux and `psutil.Process.io_counters` fallback.
+- Formatted the entire codebase with `black` and added a `.flake8` config; removed unused imports.
 - `dxcli daemon` arguments are now strictly structured (e.g. `--target`, `--webhook`) rather than accepting arbitrary command injection.
 - `dxcli serve` explicitly warns when binding to `0.0.0.0`.
 
 ### Fixed
+- Fixed directory tree traversal, log finder, and stale file performance bottlenecks for fast (< 0.2s) scans.
+- Fixed process handle query overhead in `ProcessMapper`, reducing inspection time from >100s to sub-second.
+- Stabilized linear regression disk prediction calculations across rapid consecutive diagnostic runs.
+- Added missing `from typing import List` import in `plugins/postgres_wal_analyzer.py`.
+- Replaced decorative emojis in CLI output, HTML reports, TUI dashboard, and heal engine with text-only equivalents.
+- Fixed path-prefix matching bugs in `process_mapper.py` and `runtime.py`.
+- Updated Python floor requirement to Python 3.9+.
 - Fixed crash in `dxcli diagnose --classify` caused by reference to non-existent `CATEGORIES` attribute (BUG-1).
 - Redirected logrotate prescriptions to write safely to the scan scope's `.dx-prescriptions/` directory instead of `/etc/logrotate.d/` directly (BUG-2).
 - Threaded the target `scan_path` through the rule evaluation engine to prevent rules firing on arbitrary working directories (BUG-3).

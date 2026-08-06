@@ -34,16 +34,16 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[test]"
+          pip install -e ".[test,server]"
           pip install "${{ matrix.numpy-version }}"
-      
+
       - name: Run tests
         run: pytest tests/ -v -W error::RuntimeWarning
 
       - name: Lint
         run: |
-          flake8 dxcli --max-line-length=120 --extend-ignore=E203,W503
-          black --check dxcli
+          flake8 dxcli tests plugins
+          black --check dxcli tests plugins
 
       - name: Security scan
         run: bandit -r dxcli -q -ll

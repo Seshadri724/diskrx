@@ -63,19 +63,31 @@ def test_build_risk_signals_orders_highest_score_first():
 
     assert signals[0].severity == "critical"
     assert signals[0].score == 100
-    assert {signal.category for signal in signals} == {"capacity", "growth-source", "policy"}
+    assert {signal.category for signal in signals} == {
+        "capacity",
+        "growth-source",
+        "policy",
+    }
 
 
 def test_agent_snapshot_collector_builds_fleet_ready_snapshot(monkeypatch, tmp_path):
     monkeypatch.setattr("dxcli.state.get_state_dir", lambda: str(tmp_path))
     monkeypatch.setattr(
         "dxcli.collectors.dir_tree.DirectoryTreeCollector.scan",
-        lambda self, path: [DirNode(path=str(tmp_path / "logs"), size_bytes=30 * 1024**3, file_count=12)],
+        lambda self, path: [
+            DirNode(path=str(tmp_path / "logs"), size_bytes=30 * 1024**3, file_count=12)
+        ],
     )
-    monkeypatch.setattr("dxcli.collectors.log_finder.LogFinderCollector.scan", lambda self, paths: [])
-    monkeypatch.setattr("dxcli.collectors.stale_files.StaleFileCollector.scan", lambda self, paths: [])
+    monkeypatch.setattr(
+        "dxcli.collectors.log_finder.LogFinderCollector.scan", lambda self, paths: []
+    )
+    monkeypatch.setattr(
+        "dxcli.collectors.stale_files.StaleFileCollector.scan", lambda self, paths: []
+    )
 
-    snapshot = AgentSnapshotCollector(provider=FakeProvider(), policy_engine=FakePolicyEngine()).collect(str(tmp_path))
+    snapshot = AgentSnapshotCollector(
+        provider=FakeProvider(), policy_engine=FakePolicyEngine()
+    ).collect(str(tmp_path))
 
     assert snapshot.schema_version == "dxcli.host_snapshot.v1"
     assert snapshot.risk_level == "critical"
@@ -91,11 +103,19 @@ def test_agent_snapshot_collector_records_partial_failures(monkeypatch, tmp_path
     def fail_scan(self, path):
         raise OSError("scan failed")
 
-    monkeypatch.setattr("dxcli.collectors.dir_tree.DirectoryTreeCollector.scan", fail_scan)
-    monkeypatch.setattr("dxcli.collectors.log_finder.LogFinderCollector.scan", lambda self, paths: [])
-    monkeypatch.setattr("dxcli.collectors.stale_files.StaleFileCollector.scan", lambda self, paths: [])
+    monkeypatch.setattr(
+        "dxcli.collectors.dir_tree.DirectoryTreeCollector.scan", fail_scan
+    )
+    monkeypatch.setattr(
+        "dxcli.collectors.log_finder.LogFinderCollector.scan", lambda self, paths: []
+    )
+    monkeypatch.setattr(
+        "dxcli.collectors.stale_files.StaleFileCollector.scan", lambda self, paths: []
+    )
 
-    snapshot = AgentSnapshotCollector(provider=FakeProvider(), policy_engine=FakePolicyEngine()).collect(str(tmp_path))
+    snapshot = AgentSnapshotCollector(
+        provider=FakeProvider(), policy_engine=FakePolicyEngine()
+    ).collect(str(tmp_path))
 
     assert snapshot.top_dirs == []
     assert snapshot.collector_errors[0].collector == "directory_tree"
@@ -105,15 +125,33 @@ def test_snapshot_command_outputs_json(monkeypatch, tmp_path):
     monkeypatch.setattr("dxcli.state.get_state_dir", lambda: str(tmp_path))
     monkeypatch.setattr(
         "dxcli.collectors.dir_tree.DirectoryTreeCollector.scan",
-        lambda self, path: [DirNode(path=str(tmp_path / "logs"), size_bytes=30 * 1024**3, file_count=12)],
+        lambda self, path: [
+            DirNode(path=str(tmp_path / "logs"), size_bytes=30 * 1024**3, file_count=12)
+        ],
     )
-    monkeypatch.setattr("dxcli.collectors.log_finder.LogFinderCollector.scan", lambda self, paths: [])
-    monkeypatch.setattr("dxcli.collectors.stale_files.StaleFileCollector.scan", lambda self, paths: [])
-    monkeypatch.setattr("dxcli.enterprise.AgentSnapshotCollector.__init__", lambda self: None)
-    monkeypatch.setattr("dxcli.enterprise.AgentSnapshotCollector.provider", FakeProvider(), raising=False)
-    monkeypatch.setattr("dxcli.enterprise.AgentSnapshotCollector.policy_engine", FakePolicyEngine(), raising=False)
+    monkeypatch.setattr(
+        "dxcli.collectors.log_finder.LogFinderCollector.scan", lambda self, paths: []
+    )
+    monkeypatch.setattr(
+        "dxcli.collectors.stale_files.StaleFileCollector.scan", lambda self, paths: []
+    )
+    monkeypatch.setattr(
+        "dxcli.enterprise.AgentSnapshotCollector.__init__", lambda self: None
+    )
+    monkeypatch.setattr(
+        "dxcli.enterprise.AgentSnapshotCollector.provider",
+        FakeProvider(),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "dxcli.enterprise.AgentSnapshotCollector.policy_engine",
+        FakePolicyEngine(),
+        raising=False,
+    )
 
-    result = CliRunner().invoke(cli, ["snapshot", str(tmp_path), "--json", "--max-items", "1"])
+    result = CliRunner().invoke(
+        cli, ["snapshot", str(tmp_path), "--json", "--max-items", "1"]
+    )
 
     assert result.exit_code == 0
     payload = json.loads(result.output)

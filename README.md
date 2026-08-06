@@ -2,8 +2,47 @@
 
 `dxcli` keeps GitHub Actions runners, dev containers, and Docker builds from running out of disk. It diagnoses *what* filled the drive, *which process* did it, and gives you a one-line fix.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PyPI](https://img.shields.io/pypi/v/dxcli.svg)](https://pypi.org/project/dxcli/)
+[![Python versions](https://img.shields.io/pypi/pyversions/dxcli.svg)](https://pypi.org/project/dxcli/)
+[![Tests](https://github.com/Seshadri724/diskrx/actions/workflows/test.yml/badge.svg)](https://github.com/Seshadri724/diskrx/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Downloads](https://img.shields.io/pypi/dm/dxcli.svg)](https://pypi.org/project/dxcli/)
+
+> `No space left on device` at 87% through a CI build isn't a disk problem — it's a *diagnosis* problem. `dxcli` is the diagnosis.
+
+<!-- DEMO GIF (add before launch):
+     The money shot is a red failing CI log → `dxcli ci` → "Primary culprit + one-line fix" in ~15s.
+     Record with asciinema (asciinema.org) or termtosvg, export a GIF to docs/assets/demo.gif,
+     then uncomment the block below. Until then, the sample output beneath stands in as the visual.
+
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="dxcli diagnosing a full CI runner in a single command" width="760">
+</p>
+-->
+
+---
+
+## What it looks like
+
+```console
+$ dxcli diagnose . --docker
+
+  DISK INTELLIGENCE REPORT  ────────────────────────────────────
+  Partition: /            92%  ██████████████████░░  38.1 GB free
+  Full in ~6 days at current growth (±1.5 days, high variance)
+
+  ● Primary Culprit:  /var/lib/docker/overlay2   14.2 GB
+    Written by:       buildkitd (pid 2043, writing now)
+
+  Prescriptions
+    [safe]   docker builder prune -f            reclaims ~9.1 GB
+    [safe]   docker image prune -a              reclaims ~3.4 GB
+    [review] rm -rf ./build/.cache              reclaims ~1.2 GB
+
+  Exit: 1  (critical: partition >= 90% used)
+```
+
+`du`, `ncdu`, and `dust` show you the bytes. `dxcli` tells you **what filled the disk, which process did it, and how to fix it** — and exits non-zero in CI so your pipeline fails fast instead of failing weird.
 
 ---
 
@@ -16,7 +55,7 @@ You've seen these before:
 - A dev container that mysteriously crawls after a few weeks of `npm install` cycles.
 - A GitHub Actions runner that passes locally and fails in CI because the runner image hit 90% used.
 
-`du`, `ncdu`, and `dust` show you the bytes. `dxcli` tells you **what filled the disk, which process did it, and how to fix it** — and exits non-zero in CI when something is wrong, so your pipeline fails fast instead of failing weird.
+`dxcli` answers the question those errors don't: **now what?**
 
 ---
 
@@ -77,7 +116,7 @@ Linear regression against historical snapshots — useful for catching slow leak
 ## Use it as a GitHub Action
 
 ```yaml
-- uses: Seshadri724/dxcli@v1
+- uses: Seshadri724/diskrx@v1
   with:
     path: .
     fail-on-critical: true
@@ -125,27 +164,27 @@ dxcli diagnose / --report disk-report.html
 pip install dxcli
 ```
 
-Requires Python 3.8+. Works on Linux, macOS, and Windows. Docker analysis requires a reachable Docker socket.
+Requires Python 3.8+. Tested on CPython 3.8–3.12 across Linux, macOS, and Windows. No telemetry, no network calls unless you configure webhooks. Docker analysis requires a reachable Docker socket.
 
 ---
 
 ## Contributing
 
 ```bash
-git clone https://github.com/Seshadri724/dxcli
-cd dxcli
+git clone https://github.com/Seshadri724/diskrx
+cd diskrx
 python -m venv venv
 # Windows: venv\Scripts\activate
 # Linux/macOS: source venv/bin/activate
 pip install -e ".[test]"
 
-black dxcli
-flake8 dxcli
-bandit -r dxcli
+black --check dxcli tests
+flake8 dxcli tests
+bandit -r dxcli -q -ll
 pytest
 ```
 
-Issues and PRs welcome at <https://github.com/Seshadri724/dxcli/issues>.
+Issues and PRs welcome at <https://github.com/Seshadri724/diskrx/issues>.
 
 ---
 

@@ -74,17 +74,21 @@ class PluginLoader:
             try:
                 os.makedirs(self.plugin_dir, mode=0o700, exist_ok=True)
             except OSError as e:
-                logger.warning("Could not create plugin directory %s: %s", self.plugin_dir, e)
+                logger.warning(
+                    "Could not create plugin directory %s: %s", self.plugin_dir, e
+                )
             return []
 
         # Load allowlist
         from ..state import get_state_dir
+
         allowlist_path = os.path.join(get_state_dir(), "plugins.allowlist")
         allowlist = load_allowlist(allowlist_path)
 
         plugins: List[AnalyzerPlugin] = []
         py_files = [
-            f for f in os.listdir(self.plugin_dir)
+            f
+            for f in os.listdir(self.plugin_dir)
             if f.endswith(".py") and f != "__init__.py"
         ]
 
@@ -104,8 +108,13 @@ class PluginLoader:
 
             file_sha = compute_sha256(file_path)
             if file_sha not in allowlist or allowlist[file_sha] != filename:
-                logger.warning("Skipping untrusted plugin: %s (SHA256: %s)", filename, file_sha)
-                print(f"[dxcli] Plugin warning: Skipping untrusted plugin {filename} (not in allowlist).", file=sys.stderr)
+                logger.warning(
+                    "Skipping untrusted plugin: %s (SHA256: %s)", filename, file_sha
+                )
+                print(
+                    f"[dxcli] Plugin warning: Skipping untrusted plugin {filename} (not in allowlist).",
+                    file=sys.stderr,
+                )
                 continue
 
             # Use a namespaced module name to avoid collisions in sys.modules
@@ -114,7 +123,9 @@ class PluginLoader:
             try:
                 spec = importlib.util.spec_from_file_location(module_name, file_path)
                 if spec is None or spec.loader is None:
-                    logger.warning("Could not create spec for plugin %s — skipping.", filename)
+                    logger.warning(
+                        "Could not create spec for plugin %s — skipping.", filename
+                    )
                     continue
 
                 module = importlib.util.module_from_spec(spec)
@@ -140,7 +151,9 @@ class PluginLoader:
                 # Isolate plugin failures — surface via logger and console, not crash
                 logger.warning("Plugin %s failed to load: %s", filename, e)
                 # The caller (cli.py) will print this to the user
-                print(f"[dxcli] Plugin warning: {filename} failed to load: {e}", file=sys.stderr)
+                print(
+                    f"[dxcli] Plugin warning: {filename} failed to load: {e}",
+                    file=sys.stderr,
+                )
 
         return plugins
-

@@ -15,7 +15,7 @@ def _path_in_scope(candidate: str, root: str) -> bool:
         return True
     cand = os.path.abspath(candidate)
     base = os.path.abspath(root)
-    if os.name == 'nt':
+    if os.name == "nt":
         cand = cand.lower()
         base = base.lower()
     if cand == base:
@@ -93,7 +93,7 @@ class PolicyEngine:
 
             if rule_type == "limit":
                 max_size_gb = rule.get("max_size_gb", 10)
-                max_size_bytes = max_size_gb * (1024 ** 3)
+                max_size_bytes = max_size_gb * (1024**3)
 
                 for d in top_dirs:
                     if _path_in_scope(d.path, target_path):
@@ -108,7 +108,9 @@ class PolicyEngine:
                                         if d.size_bytes > max_size_bytes * 1.5
                                         else "warning"
                                     ),
-                                    suggested_action=rule.get("action", "Cleanup or archive"),
+                                    suggested_action=rule.get(
+                                        "action", "Cleanup or archive"
+                                    ),
                                 )
                             )
 
@@ -128,4 +130,3 @@ class PolicyEngine:
                             )
 
         return violations
-

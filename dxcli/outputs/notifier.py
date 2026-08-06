@@ -1,7 +1,9 @@
+import http.client
 import json
 import logging
 import ipaddress
 import socket
+import ssl
 import subprocess
 import sys
 import urllib.error
@@ -12,9 +14,6 @@ from urllib.parse import urlparse
 logger = logging.getLogger(__name__)
 
 
-import http.client
-import ssl
-
 class PinnedHTTPConnection(http.client.HTTPConnection):
     def __init__(self, host, port=None, pinned_ip=None, **kwargs):
         self.pinned_ip = pinned_ip
@@ -22,10 +21,9 @@ class PinnedHTTPConnection(http.client.HTTPConnection):
 
     def connect(self):
         self.sock = socket.create_connection(
-            (self.pinned_ip, self.port),
-            self.timeout,
-            self.source_address
+            (self.pinned_ip, self.port), self.timeout, self.source_address
         )
+
 
 class PinnedHTTPSConnection(http.client.HTTPSConnection):
     def __init__(self, host, port=None, pinned_ip=None, **kwargs):
@@ -34,14 +32,10 @@ class PinnedHTTPSConnection(http.client.HTTPSConnection):
 
     def connect(self):
         self.sock = socket.create_connection(
-            (self.pinned_ip, self.port),
-            self.timeout,
-            self.source_address
+            (self.pinned_ip, self.port), self.timeout, self.source_address
         )
-        self.sock = self._context.wrap_socket(
-            self.sock,
-            server_hostname=self.host
-        )
+        self.sock = self._context.wrap_socket(self.sock, server_hostname=self.host)
+
 
 class PinnedHTTPHandler(urllib.request.HTTPHandler):
     def __init__(self, pinned_ip):
@@ -51,7 +45,9 @@ class PinnedHTTPHandler(urllib.request.HTTPHandler):
     def http_open(self, req):
         def build_connection(host, **kwargs):
             return PinnedHTTPConnection(host, pinned_ip=self.pinned_ip, **kwargs)
+
         return self.do_open(build_connection, req)
+
 
 class PinnedHTTPSHandler(urllib.request.HTTPSHandler):
     def __init__(self, pinned_ip, context=None):
@@ -61,18 +57,36 @@ class PinnedHTTPSHandler(urllib.request.HTTPSHandler):
     def https_open(self, req):
         def build_connection(host, **kwargs):
             return PinnedHTTPSConnection(host, pinned_ip=self.pinned_ip, **kwargs)
-        return self.do_open(build_connection, req,
-            context=self._context, check_hostname=self._check_hostname)
+
+        return self.do_open(
+            build_connection,
+            req,
+            context=self._context,
+            check_hostname=self._check_hostname,
+        )
+
 
 class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        raise urllib.error.HTTPError(req.full_url, code, f"Redirects are disabled: redirection to {newurl} rejected", headers, fp)
+        raise urllib.error.HTTPError(
+            req.full_url,
+            code,
+            f"Redirects are disabled: redirection to {newurl} rejected",
+            headers,
+            fp,
+        )
 
 
-def validate_webhook_destination(url: str, allow_private: bool = False) -> Tuple[bool, str, Optional[str]]:
+def validate_webhook_destination(
+    url: str, allow_private: bool = False
+) -> Tuple[bool, str, Optional[str]]:
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
-        return False, f"Invalid webhook scheme '{parsed.scheme}'. Only http and https are allowed.", None
+        return (
+            False,
+            f"Invalid webhook scheme '{parsed.scheme}'. Only http and https are allowed.",
+            None,
+        )
     if not parsed.hostname:
         return False, "Invalid webhook URL: host is required.", None
 
@@ -98,7 +112,11 @@ def validate_webhook_destination(url: str, allow_private: bool = False) -> Tuple
             or ip.is_reserved
             or ip.is_unspecified
         ):
-            return False, "Webhook host resolves to a private, loopback, link-local, or reserved address.", None
+            return (
+                False,
+                "Webhook host resolves to a private, loopback, link-local, or reserved address.",
+                None,
+            )
 
         if not resolved_ip:
             resolved_ip = address
@@ -121,27 +139,27 @@ def send_webhook(url: str, payload: Dict[str, Any]) -> Tuple[bool, str]:
     is_valid, error, pinned_ip = validate_webhook_destination(url)
     if not is_valid:
         return False, error
-        
+
     # Standard generic fallback if complex layout isn't needed
     if "text" not in payload and "message" in payload:
         payload["text"] = payload["message"]
-        
-    data = json.dumps(payload).encode('utf-8')
+
+    data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
-        url, 
-        data=data, 
-        headers={'Content-Type': 'application/json', 'User-Agent': 'dxcli/1.0'},
-        method='POST'
+        url,
+        data=data,
+        headers={"Content-Type": "application/json", "User-Agent": "dxcli/1.0"},
+        method="POST",
     )
-    
+
     context = ssl.create_default_context()
     handlers = [
         NoRedirectHandler(),
         PinnedHTTPHandler(pinned_ip),
-        PinnedHTTPSHandler(pinned_ip, context=context)
+        PinnedHTTPSHandler(pinned_ip, context=context),
     ]
     opener = urllib.request.build_opener(*handlers)
-    
+
     try:
         # Production Hardening: 5 second timeout to prevent blocking the watch loop
         with opener.open(req, timeout=5.0) as response:
@@ -157,6 +175,7 @@ def send_webhook(url: str, payload: Dict[str, Any]) -> Tuple[bool, str]:
         logger.error(msg)
         return False, msg
 
+
 def send_desktop_notification(title: str, message: str):
     """
     Sends a native desktop notification without external dependencies.
@@ -164,6 +183,7 @@ def send_desktop_notification(title: str, message: str):
     try:
         if sys.platform == "win32":
             import os
+
             os.environ["DX_TITLE"] = str(title)
             os.environ["DX_MESSAGE"] = str(message)
             try:
@@ -176,13 +196,19 @@ def send_desktop_notification(title: str, message: str):
                 $notification.Visible = $true
                 $notification.ShowBalloonTip(5000)
                 """
-                subprocess.run(["powershell", "-NoProfile", "-Command", ps_script], capture_output=True, check=False)
+                subprocess.run(
+                    ["powershell", "-NoProfile", "-Command", ps_script],
+                    capture_output=True,
+                    check=False,
+                )
             finally:
                 os.environ.pop("DX_TITLE", None)
                 os.environ.pop("DX_MESSAGE", None)
         elif sys.platform == "darwin":
-            script = 'on run argv\ndisplay notification (item 2 of argv) with title (item 1 of argv)\nend run'
-            subprocess.run(["osascript", "-e", script, str(title), str(message)], check=False)
+            script = "on run argv\ndisplay notification (item 2 of argv) with title (item 1 of argv)\nend run"
+            subprocess.run(
+                ["osascript", "-e", script, str(title), str(message)], check=False
+            )
         else:
             # Linux notification (fallback to notify-send)
             subprocess.run(["notify-send", str(title), str(message)], check=False)

@@ -16,7 +16,8 @@ class DatabaseError(Exception):
 class Database:
     def __init__(self, db_path: Optional[str] = None):
         if db_path is None:
-            from ..state import get_state_dir   # BUG-3 FIX: was `.state` (wrong level)
+            from ..state import get_state_dir  # BUG-3 FIX: was `.state` (wrong level)
+
             db_path = os.path.join(get_state_dir(), "history.db")
 
         self.db_path = db_path
@@ -34,7 +35,7 @@ class Database:
         cur.execute("PRAGMA busy_timeout=5000")
 
         # Restrict permissions on the database file (Unix only)
-        if os.name != 'nt' and os.path.exists(self.db_path):
+        if os.name != "nt" and os.path.exists(self.db_path):
             try:
                 os.chmod(self.db_path, 0o600)
             except OSError:
@@ -83,7 +84,12 @@ class Database:
             cur.execute(
                 "INSERT INTO snapshots (timestamp, mountpoint, total_bytes, used_bytes) "
                 "VALUES (?, ?, ?, ?)",
-                (timestamp, partition.mountpoint, partition.total_bytes, partition.used_bytes),
+                (
+                    timestamp,
+                    partition.mountpoint,
+                    partition.total_bytes,
+                    partition.used_bytes,
+                ),
             )
             snapshot_id = cur.lastrowid
             for d in top_dirs:
@@ -106,7 +112,9 @@ class Database:
                 pass
             raise DatabaseError(f"Snapshot write failed: {e}") from e
 
-    def get_history(self, mountpoint: str, days_back: int = 30, limit: int = 100) -> List[Dict]:
+    def get_history(
+        self, mountpoint: str, days_back: int = 30, limit: int = 100
+    ) -> List[Dict]:
         """Return ordered historical snapshots for a mountpoint."""
         cutoff = time.time() - (days_back * 86400)
         try:
@@ -124,7 +132,9 @@ class Database:
             logger.error("get_history query failed: %s", e)
             return []
 
-    def get_dir_history(self, path: str, days_back: int = 30, limit: int = 100) -> List[Dict]:
+    def get_dir_history(
+        self, path: str, days_back: int = 30, limit: int = 100
+    ) -> List[Dict]:
         """Return ordered historical size metrics for a specific directory."""
         cutoff = time.time() - (days_back * 86400)
         try:
@@ -147,7 +157,9 @@ class Database:
             logger.error("get_dir_history query failed: %s", e)
             return []
 
-    def get_snapshot_closest_to(self, mountpoint: str, target_timestamp: float) -> Optional[Dict]:
+    def get_snapshot_closest_to(
+        self, mountpoint: str, target_timestamp: float
+    ) -> Optional[Dict]:
         """Return the snapshot and directory metrics closest to target_timestamp."""
         try:
             cur = self._conn.cursor()
@@ -176,10 +188,13 @@ class Database:
         cutoff = time.time() - (days * 86400)
         cur = self._conn.cursor()
         try:
-            cur.execute("""
-                DELETE FROM directory_metrics 
+            cur.execute(
+                """
+                DELETE FROM directory_metrics
                 WHERE snapshot_id IN (SELECT id FROM snapshots WHERE timestamp < ?)
-            """, (cutoff,))
+            """,
+                (cutoff,),
+            )
             cur.execute("DELETE FROM snapshots WHERE timestamp < ?", (cutoff,))
             self._conn.commit()
             cur.execute("VACUUM")

@@ -1,6 +1,5 @@
 import json
 import os
-import pytest
 from unittest.mock import patch, MagicMock
 from click.testing import CliRunner
 from fastapi.testclient import TestClient
@@ -13,7 +12,9 @@ from dxcli.runtime import ExitCode
 # 1. FastAPI Server Integration Tests
 def test_fastapi_endpoints(tmp_path):
     temp_db = tmp_path / "test_fleet.db"
-    with patch.dict(os.environ, {"DX_FLEET_DB": str(temp_db), "DX_API_TOKEN": "my-secret-token"}):
+    with patch.dict(
+        os.environ, {"DX_FLEET_DB": str(temp_db), "DX_API_TOKEN": "my-secret-token"}
+    ):
         init_db()
         client = TestClient(app)
 
@@ -43,11 +44,11 @@ def test_fastapi_endpoints(tmp_path):
                     "total_bytes": 1000,
                     "used_bytes": 800,
                     "free_bytes": 200,
-                    "usage_percent": 80.0
+                    "usage_percent": 80.0,
                 }
             ],
             "risk_score": 40,
-            "risk_level": "warning"
+            "risk_level": "warning",
         }
         resp = client.post("/v1/snapshots", json=valid_snapshot, headers=headers)
         assert resp.status_code == 202
@@ -67,14 +68,18 @@ def test_fastapi_endpoints(tmp_path):
 def test_cli_snapshot_push_requires_token(tmp_path):
     runner = CliRunner()
     with patch.dict(os.environ, {"DX_API_TOKEN": ""}):
-        result = runner.invoke(cli, ["snapshot", "--push", "http://localhost:8080/v1/snapshots"])
+        result = runner.invoke(
+            cli, ["snapshot", "--push", "http://localhost:8080/v1/snapshots"]
+        )
         assert result.exit_code == ExitCode.VALIDATION_ERROR
         assert "requires --token or env DX_API_TOKEN" in result.output
 
 
 def test_cli_snapshot_push_invalid_url():
     runner = CliRunner()
-    result = runner.invoke(cli, ["snapshot", "--push", "http://127.0.0.1/v1/snapshots", "--token", "foo"])
+    result = runner.invoke(
+        cli, ["snapshot", "--push", "http://127.0.0.1/v1/snapshots", "--token", "foo"]
+    )
     assert result.exit_code == ExitCode.VALIDATION_ERROR
     assert "Invalid push destination URL" in result.output
 
@@ -84,6 +89,7 @@ def test_cli_snapshot_push_success(tmp_path, monkeypatch):
 
     # Mock snapshot collection
     from dxcli.store.models import HostSnapshot
+
     mock_snapshot = HostSnapshot(
         schema_version="dxcli.host_snapshot.v1",
         host_id="uuid",
@@ -99,20 +105,37 @@ def test_cli_snapshot_push_success(tmp_path, monkeypatch):
         risk_signals=[],
         risk_score=0,
         risk_level="healthy",
-        collector_errors=[]
+        collector_errors=[],
     )
-    monkeypatch.setattr("dxcli.enterprise.AgentSnapshotCollector.collect", lambda self, path, *args, **kwargs: mock_snapshot)
+    monkeypatch.setattr(
+        "dxcli.enterprise.AgentSnapshotCollector.collect",
+        lambda self, path, *args, **kwargs: mock_snapshot,
+    )
 
     # Mock URL Validation to pass for localhost under test
-    monkeypatch.setattr("dxcli.outputs.notifier.validate_webhook_destination", lambda url, **kwargs: (True, "", "93.184.216.34"))
+    monkeypatch.setattr(
+        "dxcli.outputs.notifier.validate_webhook_destination",
+        lambda url, **kwargs: (True, "", "93.184.216.34"),
+    )
 
     # Mock HTTP response
     mock_response = MagicMock()
     mock_response.status = 202
     mock_response.__enter__.return_value = mock_response
 
-    with patch("urllib.request.OpenerDirector.open", return_value=mock_response) as mock_open:
-        result = runner.invoke(cli, ["snapshot", "--push", "http://localhost:8080/v1/snapshots", "--token", "secret"])
+    with patch(
+        "urllib.request.OpenerDirector.open", return_value=mock_response
+    ) as mock_open:
+        result = runner.invoke(
+            cli,
+            [
+                "snapshot",
+                "--push",
+                "http://localhost:8080/v1/snapshots",
+                "--token",
+                "secret",
+            ],
+        )
         assert result.exit_code == 0
         assert "successfully pushed" in result.output
         mock_open.assert_called_once()
@@ -121,29 +144,94 @@ def test_cli_snapshot_push_success(tmp_path, monkeypatch):
 # 3. CLI Fleet Query Integration Tests
 def test_cli_fleet_server_query_success(monkeypatch):
     runner = CliRunner()
-    monkeypatch.setattr("dxcli.outputs.notifier.validate_webhook_destination", lambda url, **kwargs: (True, "", "93.184.216.34"))
+    monkeypatch.setattr(
+        "dxcli.outputs.notifier.validate_webhook_destination",
+        lambda url, **kwargs: (True, "", "93.184.216.34"),
+    )
 
     mock_response = MagicMock()
     mock_response.status = 200
-    mock_response.read.return_value = json.dumps({
-        "hosts": [
-            {
-                "hostname": "remote-host",
-                "risk_level": "critical",
-                "partitions": [
-                    {"mountpoint": "/", "usage_percent": 95.5}
-                ]
-            }
-        ]
-    }).encode("utf-8")
+    mock_response.read.return_value = json.dumps(
+        {
+            "hosts": [
+                {
+                    "hostname": "remote-host",
+                    "risk_level": "critical",
+                    "partitions": [{"mountpoint": "/", "usage_percent": 95.5}],
+                }
+            ]
+        }
+    ).encode("utf-8")
     mock_response.__enter__.return_value = mock_response
 
     with patch("urllib.request.OpenerDirector.open", return_value=mock_response):
-        result = runner.invoke(cli, ["fleet", "--server", "http://localhost:8080", "--token", "secret"])
+        result = runner.invoke(
+            cli, ["fleet", "--server", "http://localhost:8080", "--token", "secret"]
+        )
         assert result.exit_code == 0
         assert "remote-host" in result.output
         assert "95.5%" in result.output
         assert "CRITICAL" in result.output
+
+
+def test_cli_fleet_server_requires_token(monkeypatch):
+    runner = CliRunner()
+    with patch.dict(os.environ, {"DX_API_TOKEN": ""}):
+        result = runner.invoke(cli, ["fleet", "--server", "http://localhost:8080"])
+
+    assert result.exit_code == ExitCode.VALIDATION_ERROR
+    assert "requires --token or env DX_API_TOKEN" in result.output
+
+
+def test_cli_snapshot_push_json_emits_snapshot(tmp_path, monkeypatch):
+    from dxcli.store.models import HostSnapshot
+
+    runner = CliRunner()
+    mock_snapshot = HostSnapshot(
+        schema_version="dxcli.host_snapshot.v1",
+        host_id="host-a",
+        hostname="test-host",
+        platform="test",
+        timestamp=1.0,
+        scan_path=str(tmp_path),
+        partitions=[],
+        top_dirs=[],
+        logs=[],
+        stales=[],
+        policy_violations=[],
+        risk_signals=[],
+        risk_score=0,
+        risk_level="healthy",
+        collector_errors=[],
+    )
+    monkeypatch.setattr(
+        "dxcli.enterprise.AgentSnapshotCollector.collect",
+        lambda self, path, *args, **kwargs: mock_snapshot,
+    )
+    monkeypatch.setattr(
+        "dxcli.outputs.notifier.validate_webhook_destination",
+        lambda url, **kwargs: (True, "", "93.184.216.34"),
+    )
+    mock_response = MagicMock()
+    mock_response.status = 202
+    mock_response.__enter__.return_value = mock_response
+
+    with patch("urllib.request.OpenerDirector.open", return_value=mock_response):
+        result = runner.invoke(
+            cli,
+            [
+                "snapshot",
+                str(tmp_path),
+                "--push",
+                "http://localhost:8080/v1/snapshots",
+                "--token",
+                "secret",
+                "--json",
+            ],
+        )
+
+    assert result.exit_code == 0
+    assert json.loads(result.output)["host_id"] == "host-a"
 
 
 def test_fastapi_endpoints_missing_server_token(tmp_path):
@@ -159,8 +247,11 @@ def test_fastapi_endpoints_missing_server_token(tmp_path):
 
 def test_fleet_concurrency_load(tmp_path):
     import threading
+
     temp_db = tmp_path / "test_concurrency.db"
-    with patch.dict(os.environ, {"DX_FLEET_DB": str(temp_db), "DX_API_TOKEN": "my-secret-token"}):
+    with patch.dict(
+        os.environ, {"DX_FLEET_DB": str(temp_db), "DX_API_TOKEN": "my-secret-token"}
+    ):
         init_db()
         client = TestClient(app)
         headers = {"Authorization": "Bearer my-secret-token"}
@@ -176,13 +267,23 @@ def test_fleet_concurrency_load(tmp_path):
                     "platform": "Linux",
                     "timestamp": 100.0 + i,
                     "partitions": [
-                        {"device": "disk0", "mountpoint": "/", "fstype": "ext4", "total_bytes": 100, "used_bytes": 50, "free_bytes": 50, "usage_percent": 50.0}
-                    ]
+                        {
+                            "device": "disk0",
+                            "mountpoint": "/",
+                            "fstype": "ext4",
+                            "total_bytes": 100,
+                            "used_bytes": 50,
+                            "free_bytes": 50,
+                            "usage_percent": 50.0,
+                        }
+                    ],
                 }
                 try:
                     resp = client.post("/v1/snapshots", json=snapshot, headers=headers)
                     if resp.status_code != 202:
-                        errors.append(f"Thread {thread_id} failed on index {i}: {resp.status_code}")
+                        errors.append(
+                            f"Thread {thread_id} failed on index {i}: {resp.status_code}"
+                        )
                 except Exception as e:
                     errors.append(f"Thread {thread_id} error: {e}")
 
@@ -197,18 +298,26 @@ def test_fleet_concurrency_load(tmp_path):
 
 def test_fastapi_rejects_invalid_host_id_format(tmp_path):
     temp_db = tmp_path / "test_hostid.db"
-    with patch.dict(os.environ, {"DX_FLEET_DB": str(temp_db), "DX_API_TOKEN": "my-secret-token"}):
+    with patch.dict(
+        os.environ, {"DX_FLEET_DB": str(temp_db), "DX_API_TOKEN": "my-secret-token"}
+    ):
         init_db()
         client = TestClient(app)
         headers = {"Authorization": "Bearer my-secret-token"}
 
         # host_id with newlines (log injection attempt)
-        resp = client.post("/v1/snapshots", json={"host_id": "evil\nINFO Fake log entry"}, headers=headers)
+        resp = client.post(
+            "/v1/snapshots",
+            json={"host_id": "evil\nINFO Fake log entry"},
+            headers=headers,
+        )
         assert resp.status_code == 400
         assert "Invalid host_id format" in resp.json()["detail"]
 
         # host_id with path traversal characters
-        resp = client.post("/v1/snapshots", json={"host_id": "../../../etc/passwd"}, headers=headers)
+        resp = client.post(
+            "/v1/snapshots", json={"host_id": "../../../etc/passwd"}, headers=headers
+        )
         assert resp.status_code == 400
         assert "Invalid host_id format" in resp.json()["detail"]
 
@@ -220,12 +329,19 @@ def test_fastapi_rejects_invalid_host_id_format(tmp_path):
 
 def test_fastapi_rejects_malformed_json(tmp_path):
     temp_db = tmp_path / "test_malformed.db"
-    with patch.dict(os.environ, {"DX_FLEET_DB": str(temp_db), "DX_API_TOKEN": "my-secret-token"}):
+    with patch.dict(
+        os.environ, {"DX_FLEET_DB": str(temp_db), "DX_API_TOKEN": "my-secret-token"}
+    ):
         init_db()
         client = TestClient(app)
-        headers = {"Authorization": "Bearer my-secret-token", "Content-Type": "application/json"}
+        headers = {
+            "Authorization": "Bearer my-secret-token",
+            "Content-Type": "application/json",
+        }
 
-        resp = client.post("/v1/snapshots", content=b"this is not json", headers=headers)
+        resp = client.post(
+            "/v1/snapshots", content=b"this is not json", headers=headers
+        )
         assert resp.status_code == 400
         assert "Invalid JSON" in resp.json()["detail"]
 
@@ -233,19 +349,17 @@ def test_fastapi_rejects_malformed_json(tmp_path):
 def test_telemetry_anonymization(tmp_path):
     user_home = tmp_path / "home" / "john_doe"
     user_home.mkdir(parents=True)
-    
+
     from dxcli.enterprise import AgentSnapshotCollector
     import socket
-    
+
     collector = AgentSnapshotCollector()
     snapshot = collector.collect(str(user_home), anonymize=True)
-    
+
     # Hostname is hashed and does not contain the original system hostname
     assert snapshot.hostname != socket.gethostname()
     assert snapshot.hostname.startswith("host-")
-    
+
     # Home directory username is scrubbed
     assert "john_doe" not in snapshot.scan_path
     assert "[redacted]" in snapshot.scan_path
-
-

@@ -46,7 +46,9 @@ class HealEngine:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _log_action(self, action: str, details: Dict, undo_info: Optional[Dict] = None) -> None:
+    def _log_action(
+        self, action: str, details: Dict, undo_info: Optional[Dict] = None
+    ) -> None:
         """Append an action record to the audit log and session list."""
         timestamp = datetime.now().isoformat()
         log_entry = {
@@ -66,7 +68,9 @@ class HealEngine:
         if undo_info:
             try:
                 stack = self._load_undo_stack()
-                stack.append({"timestamp": timestamp, "action": action, "undo_info": undo_info})
+                stack.append(
+                    {"timestamp": timestamp, "action": action, "undo_info": undo_info}
+                )
                 self._save_undo_stack(stack)
             except Exception as e:
                 logger.warning("Undo stack update failed: %s", e)
@@ -86,6 +90,7 @@ class HealEngine:
 
     def _save_undo_stack(self, stack: List[Dict]) -> None:
         from .state import atomic_write
+
         atomic_write(self.undo_stack_path, json.dumps(stack, indent=2))
 
     def _is_safe_path(self, target_path: str) -> bool:
@@ -101,7 +106,7 @@ class HealEngine:
         abs_target = os.path.abspath(target_path)
         scope = self.allowed_scope
         # Case-insensitive on Windows
-        if os.name == 'nt':
+        if os.name == "nt":
             abs_target = abs_target.lower()
             scope = scope.lower()
         # os.path.startswith is not reliable — use normpath comparison
@@ -115,7 +120,7 @@ class HealEngine:
         except OSError:
             return False
 
-        if os.name == 'nt':
+        if os.name == "nt":
             real_target = real_target.lower()
         if not (real_target == scope or real_target.startswith(scope_with_sep)):
             return False
@@ -146,13 +151,18 @@ class HealEngine:
         Refusals are always logged.
         """
         if not prescription.target_path:
-            self._log_action("skip", {"name": prescription.name, "reason": "No target path"})
+            self._log_action(
+                "skip", {"name": prescription.name, "reason": "No target path"}
+            )
             return False
 
         if not self.allowed_scope:
             self._log_action(
                 "refuse",
-                {"name": prescription.name, "reason": "HealEngine has no allowed_scope set. Refusing all actions."},
+                {
+                    "name": prescription.name,
+                    "reason": "HealEngine has no allowed_scope set. Refusing all actions.",
+                },
             )
             logger.error(
                 "heal refused: no allowed_scope set. Always pass allowed_scope= when constructing HealEngine."
@@ -185,7 +195,7 @@ class HealEngine:
                     "path": prescription.target_path,
                     "action_type": prescription.action_type,
                     "saved": prescription.size_savings_bytes,
-                }
+                },
             )
             self.total_reclaimed += prescription.size_savings_bytes
             return True
@@ -201,13 +211,17 @@ class HealEngine:
                 {
                     "name": prescription.name,
                     "reason": "Requires manual intervention by the operator",
-                    "instructions": prescription.template or "See prescription details.",
+                    "instructions": prescription.template
+                    or "See prescription details.",
                 },
             )
         else:
             self._log_action(
                 "skip",
-                {"name": prescription.name, "reason": f"Unknown action_type: {prescription.action_type}"},
+                {
+                    "name": prescription.name,
+                    "reason": f"Unknown action_type: {prescription.action_type}",
+                },
             )
 
         if success:
@@ -215,10 +229,11 @@ class HealEngine:
 
         return success
 
-
     def _execute_delete(self, p: Prescription) -> bool:
         if not os.path.exists(p.target_path):
-            self._log_action("delete_fail", {"path": p.target_path, "reason": "File not found"})
+            self._log_action(
+                "delete_fail", {"path": p.target_path, "reason": "File not found"}
+            )
             return False
 
         backup_id = self._safe_backup_id(p.id)
@@ -250,7 +265,10 @@ class HealEngine:
         except OSError as e:
             self._log_action(
                 "delete_fail",
-                {"path": p.target_path, "reason": f"Backup failed, original untouched: {e}"},
+                {
+                    "path": p.target_path,
+                    "reason": f"Backup failed, original untouched: {e}",
+                },
             )
             return False
 
@@ -269,7 +287,11 @@ class HealEngine:
         self._log_action(
             "delete",
             {"path": p.target_path, "backup": backup_id, "saved": p.size_savings_bytes},
-            undo_info={"type": "restore_file", "original_path": p.target_path, "backup_path": backup_path},
+            undo_info={
+                "type": "restore_file",
+                "original_path": p.target_path,
+                "backup_path": backup_path,
+            },
         )
         return True
 
@@ -278,7 +300,11 @@ class HealEngine:
         if not self._is_safe_path(p.target_path):
             self._log_action(
                 "reject",
-                {"name": p.name, "path": p.target_path, "reason": "create_file path outside allowed scope"},
+                {
+                    "name": p.name,
+                    "path": p.target_path,
+                    "reason": "create_file path outside allowed scope",
+                },
             )
             return False
 
@@ -304,7 +330,9 @@ class HealEngine:
 
         from .outputs.cli_report import format_bytes
 
-        successful = [a for a in self.session_actions if a["action"] in ("delete", "create")]
+        successful = [
+            a for a in self.session_actions if a["action"] in ("delete", "create")
+        ]
         report = [
             "\n[bold green]SLEEP INSURANCE -- REMITTANCE REPORT[/bold green]",
             "  [bold]Status:[/bold] Healthy",

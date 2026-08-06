@@ -6,8 +6,14 @@ import uuid
 from typing import List
 
 from .policy_engine import PolicyEngine
-from .store.models import CollectorError, DirNode, HostSnapshot, Partition, PolicyViolation, RiskSignal
-
+from .store.models import (
+    CollectorError,
+    DirNode,
+    HostSnapshot,
+    Partition,
+    PolicyViolation,
+    RiskSignal,
+)
 
 SCHEMA_VERSION = "dxcli.host_snapshot.v1"
 AGENT_ID_FILE = "agent_id"
@@ -69,7 +75,7 @@ def score_policy_violation(violation: PolicyViolation) -> RiskSignal:
 
 
 def score_large_directory(node: DirNode, scan_path: str) -> RiskSignal:
-    gb = node.size_bytes / (1024 ** 3)
+    gb = node.size_bytes / (1024**3)
     if gb >= 100:
         severity = "high"
         score = 70
@@ -97,7 +103,11 @@ def build_risk_signals(
     scan_path: str,
 ) -> List[RiskSignal]:
     signals: List[RiskSignal] = []
-    signals.extend(signal for signal in (score_partition(partition) for partition in partitions) if signal.score > 0)
+    signals.extend(
+        signal
+        for signal in (score_partition(partition) for partition in partitions)
+        if signal.score > 0
+    )
     signals.extend(score_policy_violation(violation) for violation in policy_violations)
     signals.extend(
         signal
@@ -133,7 +143,9 @@ class AgentSnapshotCollector:
             atomic_write(agent_id_path, agent_id, mode=0o600)
             return agent_id
 
-    def _collect_or_default(self, name: str, func, default, errors: List[CollectorError]):
+    def _collect_or_default(
+        self, name: str, func, default, errors: List[CollectorError]
+    ):
         try:
             return func()
         except Exception as exc:
@@ -141,9 +153,7 @@ class AgentSnapshotCollector:
             return default
 
     def collect(self, path: str = ".", anonymize: bool = False) -> HostSnapshot:
-        from .collectors.dir_tree import DirectoryTreeCollector
-        from .collectors.log_finder import LogFinderCollector
-        from .collectors.stale_files import StaleFileCollector
+        from .engine import run_diagnosis
         import hashlib
         import re
 
@@ -155,30 +165,19 @@ class AgentSnapshotCollector:
             [],
             collector_errors,
         )
-        top_dirs = self._collect_or_default(
-            "directory_tree",
-            lambda: DirectoryTreeCollector().scan(scan_path),
-            [],
-            collector_errors,
+
+        diag_snap = run_diagnosis(
+            scan_path,
+            policy_engine=self.policy_engine,
+            provider=self.provider,
         )
-        logs = self._collect_or_default(
-            "log_finder",
-            lambda: LogFinderCollector().scan([scan_path]),
-            [],
-            collector_errors,
-        )
-        stales = self._collect_or_default(
-            "stale_files",
-            lambda: StaleFileCollector().scan([scan_path]),
-            [],
-            collector_errors,
-        )
-        violations = self._collect_or_default(
-            "policy",
-            lambda: self.policy_engine.evaluate(top_dirs, logs, stales),
-            [],
-            collector_errors,
-        )
+        collector_errors.extend(diag_snap.collector_errors)
+
+        top_dirs = diag_snap.top_dirs
+        logs = diag_snap.logs
+        stales = diag_snap.stale_files
+        violations = diag_snap.policy_violations
+
         signals = build_risk_signals(partitions, top_dirs, violations, scan_path)
         score = max((signal.score for signal in signals), default=0)
 
@@ -201,18 +200,21 @@ class AgentSnapshotCollector:
         )
 
         if anonymize or os.environ.get("DX_ANONYMIZE_TELEMETRY") == "1":
+
             def scrub_path(p: str) -> str:
                 if not p:
                     return p
                 # Handle Windows C:\Users\username and Unix /home/username or /Users/username (with slash abstraction)
-                p = re.sub(r'(?i)([a-zA-Z]:\\Users\\)([^\\]+)', r'\1[redacted]', p)
-                p = re.sub(r'(?i)(/Users/)([^/]+)', r'\1[redacted]', p)
-                p = re.sub(r'(?i)(/home/|\\home\\)([^/\\]+)', r'\1[redacted]', p)
+                p = re.sub(r"(?i)([a-zA-Z]:\\Users\\)([^\\]+)", r"\1[redacted]", p)
+                p = re.sub(r"(?i)(/Users/)([^/]+)", r"\1[redacted]", p)
+                p = re.sub(r"(?i)(/home/|\\home\\)([^/\\]+)", r"\1[redacted]", p)
                 return p
 
             # Anonymize hostname via hashing
             raw_host = snapshot.hostname
-            snapshot.hostname = "host-" + hashlib.sha256(raw_host.encode('utf-8')).hexdigest()[:12]
+            snapshot.hostname = (
+                "host-" + hashlib.sha256(raw_host.encode("utf-8")).hexdigest()[:12]
+            )
             snapshot.scan_path = scrub_path(snapshot.scan_path)
 
             for part in snapshot.partitions:
@@ -221,8 +223,8 @@ class AgentSnapshotCollector:
             for d in snapshot.top_dirs:
                 d.path = scrub_path(d.path)
 
-            for l in snapshot.logs:
-                l.path = scrub_path(l.path)
+            for lg in snapshot.logs:
+                lg.path = scrub_path(lg.path)
 
             for s in snapshot.stales:
                 s.path = scrub_path(s.path)

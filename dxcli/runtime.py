@@ -91,11 +91,19 @@ def validate_bind_address(bind: str) -> str:
     return bind
 
 
-def ensure_within_scope(path: str, allowed_roots: Iterable[str], follow_symlinks: bool = False) -> str:
+def ensure_within_scope(
+    path: str, allowed_roots: Iterable[str], follow_symlinks: bool = False
+) -> str:
     candidate = Path(path)
-    resolved_candidate = candidate.resolve(strict=False) if follow_symlinks else candidate.absolute()
+    resolved_candidate = (
+        candidate.resolve(strict=False) if follow_symlinks else candidate.absolute()
+    )
     for root in allowed_roots:
-        resolved_root = Path(root).resolve(strict=False) if follow_symlinks else Path(root).absolute()
+        resolved_root = (
+            Path(root).resolve(strict=False)
+            if follow_symlinks
+            else Path(root).absolute()
+        )
         try:
             resolved_candidate.relative_to(resolved_root)
             return str(resolved_candidate)

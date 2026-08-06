@@ -11,6 +11,5 @@ __all__ = [
     "RootCauseAnalyzer",
     "PrescriptionEngine",
     "CorrelationEngine",
-    "StatisticalAnomalyDetector"
+    "StatisticalAnomalyDetector",
 ]
-

@@ -1,7 +1,6 @@
 import logging
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from socketserver import TCPServer
 
 from ..store.database import Database
 from ..platform import provider
@@ -27,8 +26,11 @@ class MetricsHandler(BaseHTTPRequestHandler):
                 self.wfile.write(b"Unauthorized: invalid or missing bearer token")
                 return
             import hmac
+
             token_part = auth_header[7:]
-            if not hmac.compare_digest(token_part.encode("utf-8"), auth_token.encode("utf-8")):
+            if not hmac.compare_digest(
+                token_part.encode("utf-8"), auth_token.encode("utf-8")
+            ):
                 self.send_response(401)
                 self.send_header("Content-Type", "text/plain")
                 self.end_headers()
@@ -55,10 +57,18 @@ class MetricsHandler(BaseHTTPRequestHandler):
             try:
                 parts = provider.get_partitions()
                 for p in parts:
-                    safe_mount = prometheus_label_value(p.mountpoint.replace("\\", "/").replace(":", ""))
-                    output.append(f'dx_partition_usage_percent{{mountpoint="{safe_mount}"}} {p.usage_percent}')
-                    output.append(f'dx_partition_used_bytes{{mountpoint="{safe_mount}"}} {p.used_bytes}')
-                    output.append(f'dx_partition_total_bytes{{mountpoint="{safe_mount}"}} {p.total_bytes}')
+                    safe_mount = prometheus_label_value(
+                        p.mountpoint.replace("\\", "/").replace(":", "")
+                    )
+                    output.append(
+                        f'dx_partition_usage_percent{{mountpoint="{safe_mount}"}} {p.usage_percent}'
+                    )
+                    output.append(
+                        f'dx_partition_used_bytes{{mountpoint="{safe_mount}"}} {p.used_bytes}'
+                    )
+                    output.append(
+                        f'dx_partition_total_bytes{{mountpoint="{safe_mount}"}} {p.total_bytes}'
+                    )
             except Exception as e:
                 logger.warning("Partition metrics collection failed: %s", e)
 
@@ -69,15 +79,22 @@ class MetricsHandler(BaseHTTPRequestHandler):
             # 3. Growth / prediction metrics
             try:
                 from ..analyzers.predictor import DiskPredictor
+
                 predictor = DiskPredictor(db)
                 for p in parts:
-                    safe_mount = prometheus_label_value(p.mountpoint.replace("\\", "/").replace(":", ""))
+                    safe_mount = prometheus_label_value(
+                        p.mountpoint.replace("\\", "/").replace(":", "")
+                    )
                     pred = predictor.predict_full_date(p)
                     if pred:
                         output.append(
                             f'dx_partition_daily_growth_bytes{{mountpoint="{safe_mount}"}} {pred.daily_growth_bytes}'
                         )
-                        days = pred.days_until_full if pred.days_until_full is not None else -1
+                        days = (
+                            pred.days_until_full
+                            if pred.days_until_full is not None
+                            else -1
+                        )
                         output.append(
                             f'dx_partition_days_to_full{{mountpoint="{safe_mount}"}} {days}'
                         )
@@ -101,7 +118,9 @@ class HardenedThreadingHTTPServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
 
-def start_metrics_server(port: int, bind: str = "127.0.0.1", auth_token: str = None) -> None:
+def start_metrics_server(
+    port: int, bind: str = "127.0.0.1", auth_token: str = None
+) -> None:
     """Start the blocking HTTP metrics server.
 
     Raises OSError if the bind address/port is already in use, so the caller
@@ -112,7 +131,9 @@ def start_metrics_server(port: int, bind: str = "127.0.0.1", auth_token: str = N
     server.serve_forever()
 
 
-def create_metrics_server(port: int, bind: str = "127.0.0.1", auth_token: str = None) -> HardenedThreadingHTTPServer:
+def create_metrics_server(
+    port: int, bind: str = "127.0.0.1", auth_token: str = None
+) -> HardenedThreadingHTTPServer:
     """Create a metrics server without starting it, surfacing bind failures to callers."""
     server = HardenedThreadingHTTPServer((bind, port), MetricsHandler)
     server.auth_token = auth_token

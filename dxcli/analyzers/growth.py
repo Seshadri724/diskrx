@@ -12,38 +12,45 @@ try:
 except ImportError:  # pragma: no cover - exercised only on numpy < 1.25
     from numpy import RankWarning  # numpy < 1.25
 
+
 class GrowthTracker:
     """
     Calculates daily growth rate per directory based on historical SQLite snapshots.
     """
+
     def __init__(self, db: Database):
         self.db = db
 
     def get_growth_rate(self, path: str, days: int = 7) -> Optional[GrowthRate]:
         history = self.db.get_dir_history(path, days_back=days)
         if len(history) < 2:
-            return None # Not enough history
+            return None  # Not enough history
 
         # Extract timestamps and sizes
-        timestamps = np.array([h['timestamp'] for h in history])
-        sizes = np.array([h['size_bytes'] for h in history])
-        
+        timestamps = np.array([h["timestamp"] for h in history])
+        sizes = np.array([h["size_bytes"] for h in history])
+        timestamps = timestamps - timestamps[0]
+        if np.max(timestamps) <= np.min(timestamps):
+            return None
+
         # Linear regression: size = m * timestamp + c
         # We want m (bytes per second)
         # Polyfit returns [m, c] for deg=1
         with warnings.catch_warnings():
-            warnings.simplefilter('error', RankWarning)
+            warnings.simplefilter("error", RankWarning)
             try:
                 m, _ = np.polyfit(timestamps, sizes, 1)
             except RankWarning:
                 return None  # Data too noisy/flat for reliable regression
-        
+
         # Convert bytes per second to bytes per day
         bytes_per_day = m * 86400.0
-        
+
         return GrowthRate(path=path, bytes_per_day=bytes_per_day)
 
-    def get_partition_growth_details(self, mountpoint: str, days: int = 7) -> Tuple[float, float]:
+    def get_partition_growth_details(
+        self, mountpoint: str, days: int = 7
+    ) -> Tuple[float, float]:
         """Returns (bytes_per_day_growth, s_growth) for a whole partition using residuals."""
         history = self.db.get_history(mountpoint, days_back=days)
         if len(history) < 2:
@@ -53,22 +60,25 @@ class GrowthTracker:
         if len(history) > 3:
             filtered = [history[0]]
             for entry in history[1:]:
-                if entry['timestamp'] - filtered[-1]['timestamp'] >= 30:
+                if entry["timestamp"] - filtered[-1]["timestamp"] >= 30:
                     filtered.append(entry)
             if len(filtered) >= 2:
                 history = filtered
 
-        timestamps = np.array([h['timestamp'] for h in history])
-        sizes = np.array([h['used_bytes'] for h in history])
+        timestamps = np.array([h["timestamp"] for h in history])
+        sizes = np.array([h["used_bytes"] for h in history])
+        timestamps = timestamps - timestamps[0]
 
         time_span = max(timestamps) - min(timestamps)
         if time_span <= 0:
             return 0.0, 0.0
-        
+
         with warnings.catch_warnings():
-            warnings.simplefilter('error', RankWarning)
+            warnings.simplefilter("error", RankWarning)
             try:
-                p, residuals, rank, singular_values, rcond = np.polyfit(timestamps, sizes, 1, full=True)
+                p, residuals, rank, singular_values, rcond = np.polyfit(
+                    timestamps, sizes, 1, full=True
+                )
                 m = p[0]
                 ssr = residuals[0] if len(residuals) > 0 else 0.0
                 n = len(timestamps)
