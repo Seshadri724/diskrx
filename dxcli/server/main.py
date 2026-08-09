@@ -34,8 +34,7 @@ def get_connection():
 def init_db():
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute(
-        """
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS hosts (
             host_id TEXT PRIMARY KEY,
             hostname TEXT,
@@ -44,10 +43,8 @@ def init_db():
             risk_score INTEGER,
             last_seen_at REAL
         )
-        """
-    )
-    cur.execute(
-        """
+        """)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS partitions (
             host_id TEXT,
             device TEXT,
@@ -60,8 +57,7 @@ def init_db():
             PRIMARY KEY (host_id, mountpoint),
             FOREIGN KEY (host_id) REFERENCES hosts(host_id) ON DELETE CASCADE
         )
-        """
-    )
+        """)
     conn.commit()
     conn.close()
 

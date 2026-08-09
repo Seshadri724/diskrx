@@ -49,7 +49,7 @@ jobs:
         if: matrix.python-version == '3.11'
         run: |
           flake8 dxcli tests plugins
-          black --check dxcli tests plugins
+          black --check --fast dxcli tests plugins
 
       - name: Security scan
         if: matrix.python-version == '3.11'
