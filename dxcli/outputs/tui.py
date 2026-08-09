@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, DataTable, Static, Label, LoadingIndicator
 from textual.containers import Horizontal, Vertical
