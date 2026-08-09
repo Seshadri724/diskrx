@@ -1,0 +1,26 @@
+# .github/workflows/self-hosted-test.yml
+name: Self-Hosted Validation
+on: workflow_dispatch  # manual trigger only
+jobs:
+  validate:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e ".[test,server]"
+      - name: Tests
+        run: pytest tests/ -v -W error::RuntimeWarning
+      - name: Smoke test
+        run: |
+          dxcli diagnose . --json
+          dxcli predict .
+          dxcli clean --dry-run
+      - name: Baseline -> Build -> Autopsy
+        run: |
+          dxcli snapshot-baseline --baseline dxcli-baseline.json .
+          echo "Simulated build step"
+          dd if=/dev/zero of=build-artifact bs=1M count=50 2>/dev/null || true
+          dxcli autopsy --baseline dxcli-baseline.json --format markdown .
