@@ -9,7 +9,7 @@ description = "The disk doctor for your CI pipeline and dev box — diagnose wha
 authors = [
     {name = "Seshadri Naidu Vangapandu", email = "seshuvangapandu@gmail.com"}
 ]
-license = "MIT"
+license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.8"
 keywords = [
@@ -54,7 +54,8 @@ dependencies = [
 test = [
     "pytest>=7.0.0",
     "pytest-mock>=3.10.0",
-    "httpx2>=2.0.0",
+    "httpx>=0.24.0; python_version < '3.10'",
+    "httpx2>=2.0.0; python_version >= '3.10'",
     "black>=23.0.0",
     "flake8>=6.0.0",
     "bandit>=1.7.0",

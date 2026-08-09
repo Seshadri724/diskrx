@@ -3,7 +3,7 @@ import logging
 import os
 import sys
 import hashlib
-from typing import List
+from typing import Dict, List, Set
 
 from .base import AnalyzerPlugin
 
@@ -25,8 +25,8 @@ def compute_sha256(file_path: str) -> str:
         return ""
 
 
-def load_allowlist(allowlist_path: str) -> dict:
-    allowlist = {}
+def load_allowlist(allowlist_path: str) -> Dict[str, Set[str]]:
+    allowlist: Dict[str, Set[str]] = {}
     if not os.path.exists(allowlist_path):
         return allowlist
     try:
@@ -38,7 +38,9 @@ def load_allowlist(allowlist_path: str) -> dict:
                 parts = line.split(None, 1)
                 if len(parts) == 2:
                     sha256, filename = parts
-                    allowlist[sha256.lower().strip()] = filename.strip()
+                    allowlist.setdefault(sha256.lower().strip(), set()).add(
+                        filename.strip()
+                    )
     except OSError as e:
         logger.warning("Could not read allowlist: %s", e)
     return allowlist
@@ -107,7 +109,7 @@ class PluginLoader:
                 continue
 
             file_sha = compute_sha256(file_path)
-            if file_sha not in allowlist or allowlist[file_sha] != filename:
+            if filename not in allowlist.get(file_sha, set()):
                 logger.warning(
                     "Skipping untrusted plugin: %s (SHA256: %s)", filename, file_sha
                 )

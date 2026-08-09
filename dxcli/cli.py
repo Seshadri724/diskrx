@@ -507,6 +507,8 @@ def predict(path):
     from .analyzers import DiskPredictor
 
     path = os.path.abspath(path)
+    if not os.path.exists(path):
+        fail(f"Path does not exist: {path}", ExitCode.VALIDATION_ERROR)
     partition = get_partition_for_path(path)
     db = get_database()
     try:
@@ -1710,7 +1712,12 @@ def trust(path):
         if os.path.exists(allowlist_path):
             with open(allowlist_path, "r", encoding="utf-8") as f:
                 for line in f:
-                    if file_sha in line:
+                    parts = line.split(None, 1)
+                    if (
+                        len(parts) == 2
+                        and parts[0].lower() == file_sha.lower()
+                        and parts[1].strip() == filename
+                    ):
                         exists = True
                         break
 
