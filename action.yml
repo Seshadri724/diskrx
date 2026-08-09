@@ -1,0 +1,92 @@
+name: "dxcli disk guard"
+description: "Diagnose disk pressure and analyze storage growth during CI builds."
+author: "Seshadri Naidu Vangapandu"
+branding:
+  icon: "hard-drive"
+  color: "blue"
+
+inputs:
+  mode:
+    description: "Action mode: 'diagnose', 'snapshot-baseline', or 'autopsy'."
+    required: false
+    default: "diagnose"
+  baseline-file:
+    description: "Path to baseline snapshot JSON file (for snapshot-baseline and autopsy modes)."
+    required: false
+    default: "dxcli-baseline.json"
+  summary:
+    description: "Append autopsy report to $GITHUB_STEP_SUMMARY."
+    required: false
+    default: "true"
+  pr-comment:
+    description: "Post or update autopsy report as a GitHub PR comment."
+    required: false
+    default: "false"
+  path:
+    description: "Path to diagnose or analyze. Defaults to workspace root."
+    required: false
+    default: "."
+  fail-on-critical:
+    description: "Exit 1 if disk is >=90% used or critical policy violations are found (diagnose mode)."
+    required: false
+    default: "true"
+  docker:
+    description: "Include Docker images, containers, volumes, and build cache."
+    required: false
+    default: "true"
+  classify:
+    description: "Group disk usage by semantic category (node_modules, caches, build artifacts)."
+    required: false
+    default: "false"
+  report:
+    description: "Optional path to write an HTML report (e.g. disk-report.html)."
+    required: false
+    default: ""
+  python-version:
+    description: "Python version to use when installing dxcli."
+    required: false
+    default: "3.12"
+  dxcli-version:
+    description: "Specific dxcli version to install (e.g. 0.3.0). Empty = latest."
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install dxcli
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.dxcli-version }}" ]; then
+          pip install "dxcli==${{ inputs.dxcli-version }}"
+        else
+          pip install dxcli
+        fi
+
+    - name: Run dxcli
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+      run: |
+        if [ "${{ inputs.mode }}" = "snapshot-baseline" ]; then
+          args=()
+          if [ "${{ inputs.docker }}" = "false" ]; then args+=(--no-docker); fi
+          dxcli snapshot-baseline --baseline "${{ inputs.baseline-file }}" "${args[@]}" "${{ inputs.path }}"
+        elif [ "${{ inputs.mode }}" = "autopsy" ]; then
+          args=(--baseline "${{ inputs.baseline-file }}")
+          if [ "${{ inputs.summary }}" = "true" ]; then args+=(--summary); fi
+          if [ "${{ inputs.pr-comment }}" = "true" ]; then args+=(--pr-comment); fi
+          dxcli autopsy "${args[@]}" "${{ inputs.path }}"
+        else
+          args=()
+          if [ "${{ inputs.fail-on-critical }}" = "true" ]; then args+=(--ci); fi
+          if [ "${{ inputs.docker }}" = "true" ];           then args+=(--docker); fi
+          if [ "${{ inputs.classify }}" = "true" ];         then args+=(--classify); fi
+          if [ -n "${{ inputs.report }}" ];                  then args+=(--report "${{ inputs.report }}"); fi
+          dxcli diagnose "${{ inputs.path }}" "${args[@]}"
+        fi

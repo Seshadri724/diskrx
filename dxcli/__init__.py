@@ -1,6 +1,11 @@
 """
 dxcli
-Intelligent disk diagnostics for SREs.
+The disk doctor for your CI pipeline and dev box.
 """
 
-__version__ = "0.1.0"
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    __version__ = version("dxcli")
+except PackageNotFoundError:
+    __version__ = "0.0.0+local"

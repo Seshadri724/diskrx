@@ -1,193 +1,197 @@
-# 🩺 dxcli — The Disk Doctor
+# dxcli — The disk doctor for your CI pipeline and dev box
 
-> **Stop firefighting. Start predicting.**  
-> Replace your 45-minute disk investigation with a 30-second diagnosis.
+`dxcli` keeps GitHub Actions runners, dev containers, and Docker builds from running out of disk. It diagnoses *what* filled the drive, *which process* did it, and gives you a one-line fix.
 
-[![PyPI version](https://img.shields.io/pypi/v/diskrx.svg)](https://pypi.org/project/diskrx/)
-[![Python](https://img.shields.io/pypi/pyversions/diskrx.svg)](https://pypi.org/project/diskrx/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/dxcli.svg)](https://pypi.org/project/dxcli/)
+[![Python versions](https://img.shields.io/pypi/pyversions/dxcli.svg)](https://pypi.org/project/dxcli/)
+[![Tests](https://github.com/Seshadri724/diskrx/actions/workflows/test.yml/badge.svg)](https://github.com/Seshadri724/diskrx/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Downloads](https://img.shields.io/pypi/dm/dxcli.svg)](https://pypi.org/project/dxcli/)
 
+> `No space left on device` at 87% through a CI build isn't a disk problem — it's a *diagnosis* problem. `dxcli` is the diagnosis.
+
+<!-- DEMO GIF (add before launch):
+     The money shot is a red failing CI log → `dxcli ci` → "Primary culprit + one-line fix" in ~15s.
+     Record with asciinema (asciinema.org) or termtosvg, export a GIF to docs/assets/demo.gif,
+     then uncomment the block below. Until then, the sample output beneath stands in as the visual.
+
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="dxcli diagnosing a full CI runner in a single command" width="760">
+</p>
+-->
 
 ---
 
-## The Problem
+## What it looks like
 
-It's 2 AM. PagerDuty fires. Your production server is at 98% disk.
+```console
+$ dxcli diagnose . --docker
 
-You SSH in and start the ritual:
+  DISK INTELLIGENCE REPORT  ────────────────────────────────────
+  Partition: /            92%  ██████████████████░░  38.1 GB free
+  Full in ~6 days at current growth (±1.5 days, high variance)
+
+  ● Primary Culprit:  /var/lib/docker/overlay2   14.2 GB
+    Written by:       buildkitd (pid 2043, writing now)
+
+  Prescriptions
+    [safe]   docker builder prune -f            reclaims ~9.1 GB
+    [safe]   docker image prune -a              reclaims ~3.4 GB
+    [review] rm -rf ./build/.cache              reclaims ~1.2 GB
+
+  Exit: 1  (critical: partition >= 90% used)
+```
+
+`du`, `ncdu`, and `dust` show you the bytes. `dxcli` tells you **what filled the disk, which process did it, and how to fix it** — and exits non-zero in CI so your pipeline fails fast instead of failing weird.
+
+---
+
+## Why dxcli?
+
+You've seen these before:
+
+- `No space left on device` halfway through a CI build.
+- `Error response from daemon: write /var/lib/docker/...: no space left on device`.
+- A dev container that mysteriously crawls after a few weeks of `npm install` cycles.
+- A GitHub Actions runner that passes locally and fails in CI because the runner image hit 90% used.
+
+`dxcli` answers the question those errors don't: **now what?**
+
+---
+
+## Quick start
 
 ```bash
-df -h          # okay, it's /var
-du -sh /var/*  # narrowing down...
-du -sh /var/log/* | sort -h  # getting warmer...
-find /var/log -size +100M    # which file?
-lsof | grep deleted          # which process?!
+pip install dxcli
 ```
 
-**45 minutes later**, you've found the culprit — a runaway log file from a service nobody knew was deployed. You delete it, go back to sleep, and it happens again next week.
+### In GitHub Actions (the one-liner)
 
-**There is a better way.**
+```yaml
+- name: Disk guard
+  run: |
+    pip install dxcli
+    dxcli ci
+```
 
----
+`dxcli ci` is the CI-mode shortcut: silent on success, exits `1` on critical disk pressure or policy violations, and includes Docker analysis automatically.
 
-## The Solution
+### Before a `docker build`
 
 ```bash
-dxcli diagnose /var
+dxcli diagnose . --docker
 ```
 
-```
-🩺 Disk Doctor — Diagnosis Report
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Surfaces dangling images, stale build cache, and the prescriptions to reclaim them (`docker builder prune`, `docker image prune -a`, etc.) — with the actual bytes each would free.
 
-🚨 LOG BOMB DETECTED
-   /var/log/payments/transaction.log — 14.2 GB
-   ↳ Written by: payments-service (PID 18423)
-   ↳ Last rotation: Never
-   ↳ Prescription: Add logrotate config immediately
+### In your dev container
 
-⚠️  STALE DATA
-   /var/cache/thumbnails — 8.7 GB
-   ↳ Last accessed: 94 days ago
-   ↳ Prescription: Safe to archive or delete
-
-📈 GROWTH FORECAST
-   At current rate, /var fills in 6 hours 12 minutes
-   Growth is ACCELERATING (+340% vs last week)
+```bash
+dxcli diagnose ~ --classify
 ```
 
-**30 seconds. Exact culprit. Exact prescription.**
+Groups usage by category (node_modules, Python venvs, build artifacts, cache directories, logs) so you can see at a glance whether it's `~/.cache/pip` or that one `node_modules` from 2024 that's killing you.
 
 ---
 
-## Features
+## Core features
 
-### 🔍 `dxcli diagnose` — Intelligent Diagnosis
-Not just file sizes. It tells you **why** your disk is filling:
-- **Log Bomb detection** — unrotated logs growing out of control
-- **Stale file identification** — large files untouched for months
-- **Process attribution** — exactly which PID is writing to a path
+### Exit-code-aware CI mode
+`dxcli ci` and `dxcli diagnose --ci` exit `1` on critical thresholds. Drop it in as a pre-build step; your pipeline fails the moment the runner is unhealthy, not 20 minutes later mid-build.
 
-### 📈 `dxcli predict` — Time-to-Full Forecasting
-Linear regression on historical snapshots stored locally. Tells you:
-- When your disk will be full (hours, days, weeks)
-- Whether growth is stable or **accelerating**
-- Which directories are the fastest-growing threats
+### Docker-aware diagnosis
+`--docker` correlates Docker's own disk usage (images, containers, volumes, build cache) with system disk pressure. No more `docker system df` followed by "now what?"
 
-### 🖥️ `dxcli dash` — Real-time TUI Dashboard
-A full terminal UI with live sparklines, anomaly alerts, and interactive process maps. No browser required.
+### Process attribution
+Most disk tools tell you *which directory* is full. `dxcli` tells you *which process is writing to it right now*, so you can find the runaway test runner or the misconfigured logger.
 
+### Predictive forecasting
+Linear regression against historical snapshots — useful for catching slow leaks in long-lived dev environments or shared CI runners before they bite.
+
+### Safe automated cleanup
+`dxcli heal <path>` applies scoped, reversible fixes — and `dxcli undo` reverts the last one. No untrusted plugins run by default.
+
+---
+
+## Use it as a GitHub Action
+
+```yaml
+- uses: Seshadri724/diskrx@v1
+  with:
+    path: .
+    fail-on-critical: true
+    docker: true
 ```
-┌─ Disk Overview ─────────────────────────────────┐
-│ /var    [████████████████████░░░░] 84%  ↑ FAST  │
-│ /home   [████████░░░░░░░░░░░░░░░░] 34%  → STABLE│
-│ /tmp    [███░░░░░░░░░░░░░░░░░░░░░] 12%  ↓ SLOW  │
-│                                                  │
-│ 🚨 ANOMALY: Log Bomb in /var/log/payments        │
-└──────────────────────────────────────────────────┘
+
+See [action.yml](action.yml) for all inputs.
+
+---
+
+## Common recipes
+
+### Fail a PR if the build leaves behind > 1 GB of junk
+```yaml
+- run: dxcli diagnose ./build --ci
 ```
 
-### 🔭 `dxcli serve` — The Sentinel (Prometheus-compatible)
-Run as a background daemon. Exports `/metrics` for Grafana integration. Plug dxcli's intelligence directly into your existing observability stack.
+### Catch the `npm install` that bloated the runner
+```bash
+dxcli diff . --hours 1
+```
+Shows directories that grew in the last hour, ranked.
+
+### Find what to delete in your home dir
+```bash
+dxcli diagnose ~ --classify
+```
+
+### Make a one-page HTML report you can attach to a bug
+```bash
+dxcli diagnose / --report disk-report.html
+```
+
+---
+
+## Production / SRE use
+
+`dxcli` also runs unattended as a systemd service for fleet-wide monitoring (`dxcli daemon`, `dxcli serve`, webhook alerts, hardened sandboxing). See [GUIDE.md](GUIDE.md) for the production playbook — the same engine, just configured for long-running hosts.
 
 ---
 
 ## Installation
 
 ```bash
-pip install diskrx
+pip install dxcli
 ```
 
-That's it. No config files. No daemons required to get started.
-
----
-
-## Quickstart
-
-```bash
-# Diagnose a path right now
-dxcli diagnose /var
-
-# Predict when your root partition fills up
-dxcli predict /
-
-# Open the live TUI dashboard
-dxcli dash
-
-# Start the Prometheus metrics server
-dxcli serve --port 8000
-```
-
----
-
-## How It Works
-
-dxcli stores lightweight disk snapshots in a local SQLite database (`~/.dx/history.db`). Over time, it builds a picture of your disk's growth patterns and uses linear regression to forecast the future.
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    dxcli Architecture                   │
-├──────────────┬──────────────┬────────────┬─────────────┤
-│  collectors/ │  analyzers/  │   store/   │  outputs/   │
-│              │              │            │             │
-│  Raw OS data │  The "Brain" │  SQLite DB │  Rich / TUI │
-│  psutil      │  Growth rate │  Snapshots │  Prometheus │
-│  File scans  │  Anomaly     │  History   │  HTTP API   │
-│  PID mapping │  detection   │            │             │
-└──────────────┴──────────────┴────────────┴─────────────┘
-```
-
----
-
-## Who This Is For
-
-- **SREs** who are tired of getting paged for disk full alerts they could have predicted
-- **DevOps engineers** who want disk intelligence in their Grafana dashboards
-- **Platform engineers** who need to attribute storage costs to specific services
-- **Anyone** who has typed `du -sh * | sort -h` more than once this month
-
----
-
-## Integrations
-
-**Grafana / Prometheus**
-
-Add to your `prometheus.yml`:
-```yaml
-scrape_configs:
-  - job_name: 'diskrx'
-    static_configs:
-      - targets: ['localhost:8000']
-```
-
-
-
----
-
-Have a feature request? [Open an issue](https://github.com/Seshadri724/dxcli/issues).
+Requires Python 3.8+. Tested on CPython 3.8–3.12 across Linux, macOS, and Windows. No telemetry, no network calls unless you configure webhooks. Docker analysis requires a reachable Docker socket.
 
 ---
 
 ## Contributing
 
-Contributions are welcome. Please read the contributing guide before submitting a PR.
-
 ```bash
 git clone https://github.com/Seshadri724/diskrx
-cd dxcli
-python -m venv venv && source venv/bin/activate
+cd diskrx
+python -m venv venv
+# Windows: venv\Scripts\activate
+# Linux/macOS: source venv/bin/activate
 pip install -e ".[test]"
-pytest tests/ -v
+
+black --check dxcli tests
+flake8 dxcli tests
+bandit -r dxcli -q -ll
+pytest
 ```
+
+Issues and PRs welcome at <https://github.com/Seshadri724/diskrx/issues>.
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
-
----
+MIT — see [LICENSE](LICENSE).
 
 <p align="center">
-  Built for SREs, by someone who got paged one too many times at 2 AM.
+  Built so your CI build doesn't die at 87%.
 </p>

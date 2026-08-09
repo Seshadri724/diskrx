@@ -2,11 +2,11 @@ import sys
 import os
 
 # Force UTF-8 on Windows to prevent encoding errors with Unicode box chars
-if sys.platform == 'win32':
-    os.environ.setdefault('PYTHONUTF8', '1')
-    if hasattr(sys.stdout, 'reconfigure'):
+if sys.platform == "win32":
+    os.environ.setdefault("PYTHONUTF8", "1")
+    if hasattr(sys.stdout, "reconfigure"):
         try:
-            sys.stdout.reconfigure(encoding='utf-8')
+            sys.stdout.reconfigure(encoding="utf-8")
         except Exception:
             pass
 
@@ -14,23 +14,24 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
-from rich.columns import Columns
 from rich.box import DOUBLE, ROUNDED
-from typing import List, Optional
+from typing import Dict, List
 from ..store.models import DirNode, UnrotatedLog, StaleFile, Partition, Prescription
 
 console = Console(force_terminal=True)
 
+
 def format_bytes(b: int) -> str:
     if b < 0:
         return f"-{format_bytes(-b)}"
-    if b >= 1024 ** 3:
+    if b >= 1024**3:
         return f"{b / (1024**3):.1f} GB"
-    elif b >= 1024 ** 2:
+    elif b >= 1024**2:
         return f"{b / (1024**2):.1f} MB"
     elif b >= 1024:
         return f"{b / 1024:.1f} KB"
     return f"{b} B"
+
 
 def sparkline_str(values: list, width: int = 6) -> str:
     """Render a list of numeric values as a Unicode sparkline."""
@@ -49,6 +50,7 @@ def sparkline_str(values: list, width: int = 6) -> str:
         result += blocks[idx]
     return result
 
+
 def trend_label(velocity: float) -> str:
     """Convert a velocity to a human-readable trend label."""
     if velocity > 1024 * 1024 * 50:
@@ -62,11 +64,12 @@ def trend_label(velocity: float) -> str:
     else:
         return "[green]STABLE[/green]"
 
+
 def severity_bar(percent: float, width: int = 32) -> str:
     """Create a colored progress bar based on disk usage severity."""
     filled = int((percent / 100) * width)
     empty = width - filled
-    
+
     if percent >= 90:
         color = "red"
         label = "CRITICAL"
@@ -76,167 +79,262 @@ def severity_bar(percent: float, width: int = 32) -> str:
     else:
         color = "green"
         label = "HEALTHY"
-    
+
     bar = f"[{color}]{'█' * filled}[/{color}][dim]{'░' * empty}[/dim]"
     return bar, label, color
 
-def render_diagnosis(path: str, 
-                      partition: Partition, 
-                      top_dirs: List[DirNode], 
-                      logs: List[UnrotatedLog], 
-                      stales: List[StaleFile],
-                      trends: List[dict] = None,
-                      prescriptions: List[Prescription] = None,
-                      anomalies: List[str] = None,
-                      prediction = None):
-    
-    trend_info = {t['path']: t for t in trends} if trends else {}
-    
-    # ── HEADER ────────────────────────────────────────────
-    header_parts = []
+
+def render_diagnosis(
+    path: str,
+    partition: Partition,
+    top_dirs: List[DirNode],
+    logs: List[UnrotatedLog],
+    stales: List[StaleFile],
+    trends: List[dict] = None,
+    prescriptions: List[Prescription] = None,
+    anomalies: List[str] = None,
+    prediction=None,
+    app_accounting: List[dict] = None,
+    classification: Dict[str, int] = None,
+    active_writers: List[dict] = None,
+    collector_errors: List = None,
+):
+
+    trend_info = {t["path"]: t for t in trends} if trends else {}
+
+    # ── HEADER ───────────────────────────────────────────
+    console.print()
+    console.print(
+        Panel(
+            Text.from_markup(
+                f"[bold white]DISK INTELLIGENCE REPORT[/bold white]\n[dim]{path}[/dim]"
+            ),
+            box=ROUNDED,
+            style="blue",
+            expand=False,
+        )
+    )
+
+    # ── 1. ACTION HEADER (PRESCRIPTION FIRST) ────────────────
+    if prescriptions:
+        actionable_prescriptions = [
+            pr
+            for pr in prescriptions
+            if pr.action_type in ("delete", "create_file") and pr.target_path
+        ]
+        if actionable_prescriptions:
+            p = actionable_prescriptions[0]  # Focus on the most impactful action
+            total_savings = sum(
+                pr.size_savings_bytes for pr in actionable_prescriptions
+            )
+
+            action_text = Text.from_markup(
+                f"  [bold red][!] ACTION REQUIRED[/bold red]\n"
+                f"  [bold]Primary Fix:[/bold] [yellow]{p.name}[/yellow]\n"
+                f"  [dim]Reclaim {format_bytes(total_savings)} across {len(actionable_prescriptions)} items.[/dim]\n"
+                f"  [bold]Run:[/bold] [white on red] dxcli heal [/white on red]"
+            )
+            console.print(
+                Panel(action_text, box=DOUBLE, border_style="red", padding=(1, 2))
+            )
+        else:
+            p = prescriptions[0]
+            action_text = Text.from_markup(
+                f"  [bold yellow][i] RECOMMENDATION[/bold yellow]\n"
+                f"  [bold]Manual Fix:[/bold] [yellow]{p.name}[/yellow]\n"
+                f"  [dim]{p.description}[/dim]\n"
+                f"  [bold]Command:[/bold] [white on black] {p.template} [/white on black]"
+            )
+            console.print(
+                Panel(action_text, box=ROUNDED, border_style="yellow", padding=(1, 2))
+            )
+
+    # ── 2. MINIMALIST STATUS ───────────────────────────────
     if partition:
-        bar, label, color = severity_bar(partition.usage_percent)
-        
+        bar, label, color = severity_bar(partition.usage_percent, width=24)
+
         pred_str = ""
         if prediction and prediction.days_until_full is not None:
             days = prediction.days_until_full
-            if days < 1:
-                pred_str = f"Full in [bold red]{days*24:.0f}h[/bold red]"
-            elif days < 7:
-                d = int(days)
-                h = int((days - d) * 24)
-                pred_str = f"Full in [bold red]{d}d {h}h[/bold red]"
+            if days < 7:
+                pred_str = (
+                    f"[!!] Full in [bold blink red]{days:.1f} days[/bold blink red]"
+                )
             else:
-                pred_str = f"Full in [bold yellow]{days:.0f} days[/bold yellow]"
+                pred_str = f"[~] Full in [bold yellow]{days:.0f} days[/bold yellow]"
         else:
-            pred_str = "[green]Not growing[/green]"
-        
-        header = Text.from_markup(
-            f"  [bold]dxcli — Disk Diagnosis[/bold]"
-            f"{'':>20}"
-            f"{partition.mountpoint}  {partition.usage_percent:.0f}%\n"
-            f"  {bar}  [{color}]{label}[/{color}] — {pred_str}"
+            pred_str = "[dim]Growth stable[/dim]"
+
+        status_line = Text.from_markup(
+            f"  [bold cyan]Partition:[/bold cyan] {partition.mountpoint:<6} [bold white]{partition.usage_percent:>3.0f}%[/bold white] {bar} {pred_str}"
         )
-    else:
-        header = Text.from_markup(f"  [bold]dxcli — Disk Diagnosis[/bold]  {path}")
-    
-    console.print()
-    console.print(Panel(header, box=DOUBLE, style="bold blue"))
-    
-    # ── ROOT CAUSE ──────────────────────────────────────
+        console.print(status_line)
+
+    # ── 3. DIAGNOSTIC NARRATIVE ───────────────────────────
     if trends and len(trends) > 0:
-        # Find the fastest-growing directory
-        fastest = max(trends, key=lambda t: t.get('velocity_per_day', 0))
-        vel = fastest.get('velocity_per_day', 0)
-        
-        if vel > 1024 * 1024:  # > 1MB/day growth
-            culprit = fastest.get('culprit')
-            proc_str = f" (written by [bold]{culprit.name}[/bold])" if culprit else ""
-            
-            # Check if it's an unrotated log
-            log_match = None
-            for log in logs:
-                if log.path.startswith(fastest['path']):
-                    log_match = log
-                    break
-            
-            cause_lines = f"  [bold red]🔴 ROOT CAUSE IDENTIFIED[/bold red]\n"
-            if log_match and not log_match.has_logrotate_config:
-                cause_lines += f"  {fastest['path']} — {format_bytes(fastest['current_size'])} (no rotation configured){proc_str}\n"
-            else:
-                cause_lines += f"  {fastest['path']} — {format_bytes(fastest['current_size'])}{proc_str}\n"
-            cause_lines += f"  Growing at {format_bytes(vel)}/day"
-            
-            console.print(Panel(Text.from_markup(cause_lines), box=ROUNDED, border_style="red"))
-    
-    # ── ANOMALY ALERTS ──────────────────────────────────
+        fastest = max(trends, key=lambda t: t.get("velocity_per_day", 0))
+        vel = fastest.get("velocity_per_day", 0)
+
+        if vel > 1024 * 1024:  # > 1MB/day
+            culprit = fastest.get("culprit")
+            proc_str = (
+                f" ([bold magenta]PID {culprit.pid} - {culprit.name}[/bold magenta])"
+                if culprit
+                else ""
+            )
+
+            console.print(
+                f"\n  [bold red]●[/bold red] [bold underline]Primary Culprit:[/bold underline] {os.path.basename(fastest['path'])}"
+            )
+            console.print(f"    [dim]{fastest['path']}[/dim]")
+            console.print(
+                f"    ↳ Growing at [bold red]{format_bytes(vel)}/day[/bold red]{proc_str}"
+            )
+
+    # ── 4. SENTINEL ALERTS ────────────────────────────────
     if anomalies:
         for a in anomalies:
-            console.print(f"  [bold red]⚠ SENTINEL:[/bold red] {a}")
-        console.print()
-    
-    # ── TOP CONSUMERS TABLE ─────────────────────────────
+            console.print(f"  [bold red][!] SENTINEL:[/bold red] {a}")
+
+    # ── 4.5 COLLECTOR WARNINGS ───────────────────────────
+    if collector_errors:
+        for err in collector_errors[:5]:
+            err_msg = getattr(err, "message", str(err))
+            err_path = getattr(err, "path", None)
+            path_str = f" at {err_path}" if err_path else ""
+            console.print(
+                f"  [bold yellow][!] SCAN WARNING:[/bold yellow] {err_msg}{path_str}"
+            )
+        if len(collector_errors) > 5:
+            console.print(
+                f"  [dim]... and {len(collector_errors) - 5} more scan warning(s).[/dim]"
+            )
+
+    # ── 5. CONSUMER INSIGHTS ──────────────────────────────
     table = Table(
-        title="TOP CONSUMERS", 
         box=ROUNDED,
-        show_header=True, 
-        header_style="bold white",
-        border_style="blue",
-        title_style="bold blue",
-        pad_edge=True,
-        expand=True
+        show_header=True,
+        header_style="bold cyan",
+        border_style="dim",
+        expand=True,
+        padding=(0, 1),
+        title="\n[dim]Top Storage Consumers[/dim]",
     )
-    table.add_column("Path", style="cyan", no_wrap=True, max_width=40, ratio=4)
-    table.add_column("Size", justify="right", style="bold white", no_wrap=True, ratio=1)
-    table.add_column("Growth/Day", justify="right", no_wrap=True, ratio=1)
-    table.add_column("Trend", justify="center", no_wrap=True, ratio=2)
-    table.add_column("Process", style="dim", no_wrap=True, ratio=2)
-    
-    for d in top_dirs[:8]:
+    table.add_column("Path", style="white", no_wrap=True, ratio=4)
+    table.add_column("Size", justify="right", style="bold white", ratio=1)
+    table.add_column("Trend", justify="center", ratio=2)
+
+    for d in top_dirs[:5]:
         info = trend_info.get(d.path, {})
-        vel = info.get('velocity_per_day', 0)
-        culprit = info.get('culprit')
-        proc_str = f"{culprit.name}" if culprit else "-"
-        
-        # Growth rate with color
-        if vel > 1024 * 1024 * 50:
-            growth_str = f"[bold red]+{format_bytes(vel)}/d[/bold red]"
-        elif vel > 1024 * 1024:
-            growth_str = f"[yellow]+{format_bytes(vel)}/d[/yellow]"
-        elif vel > 0:
-            growth_str = f"[green]+{format_bytes(vel)}/d[/green]"
-        else:
-            growth_str = f"[dim]0 B/d[/dim]"
-        
-        # Sparkline + label
-        spark = sparkline_str(info.get('history', []))
+        vel = info.get("velocity_per_day", 0)
+        spark = sparkline_str(info.get("history", []))
         label = trend_label(vel)
-        trend_display = f"{spark} {label}"
-        
-        table.add_row(d.path, format_bytes(d.size_bytes), growth_str, trend_display, proc_str)
-        
+
+        # Truncate long paths for the table
+        display_path = d.path
+        if len(display_path) > 40:
+            display_path = "..." + display_path[-37:]
+
+        table.add_row(display_path, format_bytes(d.size_bytes), f"{spark} {label}")
+
     console.print(table)
-    
-    # ── PRESCRIPTIONS ───────────────────────────────────
-    if prescriptions:
-        presc_table = Table(
-            title="💊 PRESCRIPTIONS",
+
+    # ── 5.5 APPLICATION FOOTPRINT ──────────────────────────
+    if app_accounting:
+        app_table = Table(
             box=ROUNDED,
             show_header=True,
-            header_style="bold white",
-            border_style="yellow",
-            title_style="bold yellow",
-            expand=True
+            header_style="bold magenta",
+            border_style="dim",
+            expand=True,
+            padding=(0, 1),
+            title="\n[dim]Top Storage Consumers by Application (Open Files)[/dim]",
         )
-        presc_table.add_column("#", style="bold yellow", width=3)
-        presc_table.add_column("Action", style="white", ratio=5)
-        presc_table.add_column("Risk", justify="center", ratio=1)
-        presc_table.add_column("Est. Savings", justify="right", style="bold green", ratio=1)
-        
-        total_savings = 0
-        for i, p in enumerate(prescriptions, 1):
-            risk_color = "green" if p.risk == "safe" else "yellow"
-            presc_table.add_row(
-                f"[{i}]", 
-                p.name, 
-                f"[{risk_color}]{p.risk}[/{risk_color}]",
-                f"-{format_bytes(p.size_savings_bytes)}"
+        app_table.add_column("Application (Process)", style="white", ratio=3)
+        app_table.add_column(
+            "Active Footprint", justify="right", style="bold white", ratio=1
+        )
+
+        for app in app_accounting[:5]:
+            pids_str = ", ".join(map(str, app["pids"][:3]))
+            if len(app["pids"]) > 3:
+                pids_str += ", ..."
+            app_table.add_row(
+                f"{app['name']} [dim](PIDs: {pids_str})[/dim]",
+                format_bytes(app["total_bytes"]),
             )
-            total_savings += p.size_savings_bytes
-            
-        console.print(presc_table)
-        console.print(f"  [bold green]Total recoverable: {format_bytes(total_savings)}[/bold green]")
-    
-    # ── PROBLEMS (logs/stales not in prescriptions) ─────
-    if not prescriptions and (logs or stales):
-        console.print(f"\n  [bold red]⚠ PROBLEMS FOUND[/bold red]")
-        for log in logs[:5]:
-            rot_str = ", [bold red]NO ROTATION[/bold red]" if not log.has_logrotate_config else ""
-            console.print(f"  [LOG] {log.path} — {format_bytes(log.size_bytes)}{rot_str}")
-        for stale in stales[:5]:
-            console.print(f"  [STALE] {stale.path} — {format_bytes(stale.size_bytes)}, {stale.days_stale:.0f}d old")
-    
+
+        console.print(app_table)
+
+    # ── 5.6 SEMANTIC CATEGORIZATION ────────────────────────
+    if classification:
+        class_table = Table(
+            box=ROUNDED,
+            show_header=True,
+            header_style="bold green",
+            border_style="dim",
+            expand=True,
+            padding=(0, 1),
+            title="\n[dim]Semantic Usage (by Content Type)[/dim]",
+        )
+        class_table.add_column("Category", style="white", ratio=3)
+        class_table.add_column(
+            "Total Size", justify="right", style="bold white", ratio=1
+        )
+
+        # Sort by size descending
+        sorted_cats = sorted(classification.items(), key=lambda x: x[1], reverse=True)
+        for cat, size in sorted_cats:
+            if size > 0:
+                class_table.add_row(cat, format_bytes(size))
+
+        console.print(class_table)
+
+    # ── 5.7 ACTIVE WRITERS ────────────────────────────────
+    if active_writers:
+        writer_table = Table(
+            box=ROUNDED,
+            show_header=True,
+            header_style="bold red",
+            border_style="dim",
+            expand=True,
+            padding=(0, 1),
+            title="\n[dim]Active Writers (Detected Throughput)[/dim]",
+        )
+        writer_table.add_column("Process", style="white", ratio=3)
+        writer_table.add_column(
+            "Throughput", justify="right", style="bold red", ratio=1
+        )
+
+        for w in active_writers:
+            writer_table.add_row(
+                f"{w['name']} [dim](PID: {w['pid']})[/dim]",
+                f"{format_bytes(int(w['throughput_bps']))}/s",
+            )
+
+        console.print(writer_table)
+
+    # ── 6. ALL CLEAR FOOTER ──────────────────────────────
     if not prescriptions and not logs and not stales:
-        console.print(f"\n  [bold green]✅ ALL CLEAR — No issues found.[/bold green]")
-    
+        console.print(
+            "  [bold green][OK] ALL CLEAR[/bold green] -- No immediate threats detected."
+        )
+
+    # ── 7. INSTALL INSTRUCTIONS FOR GENERATED CONFIGS ────
+    if prescriptions:
+        create_files = [pr for pr in prescriptions if pr.action_type == "create_file"]
+        if create_files:
+            console.print(
+                "\n  [bold yellow][i] INSTALL INSTRUCTIONS FOR GENERATED CONFIGS[/bold yellow]"
+            )
+            for pr in create_files:
+                basename = os.path.basename(pr.target_path)
+                system_path = f"/etc/logrotate.d/{basename}"
+                console.print(
+                    "    - To install the generated logrotate configuration, copy it to the target path:"
+                )
+                console.print(
+                    f"      [bold white]sudo cp {pr.target_path} {system_path}[/bold white]"
+                )
+
     console.print()

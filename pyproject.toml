@@ -3,25 +3,41 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "diskrx"
-version = "0.1.1"
-description = "Intelligent disk diagnostics and storage observability for SREs"
+name = "dxcli"
+version = "0.3.0"
+description = "The disk doctor for your CI pipeline and dev box — diagnose what filled the drive, which process did it, and fail fast in CI"
 authors = [
     {name = "Seshadri Naidu Vangapandu", email = "seshuvangapandu@gmail.com"}
 ]
-license = "MIT"
+license = { text = "MIT" }
 readme = "README.md"
-requires-python = ">=3.10"
-keywords = ["disk", "diagnostics", "sre", "observability", "storage", "cli"]
+requires-python = ">=3.8"
+keywords = [
+    "disk",
+    "diagnostics",
+    "ci",
+    "ci-cd",
+    "github-actions",
+    "docker",
+    "devops",
+    "developer-tools",
+    "build",
+    "cli",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
+    "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Software Development :: Quality Assurance",
     "Topic :: System :: Monitoring",
     "Topic :: System :: Systems Administration",
 ]
@@ -31,21 +47,39 @@ dependencies = [
     "textual>=0.50",
     "psutil>=5.9.0",
     "numpy>=1.24.0",
+    "pyyaml>=6.0.0",
 ]
 
 [project.optional-dependencies]
 test = [
     "pytest>=7.0.0",
     "pytest-mock>=3.10.0",
+    "httpx>=0.24.0; python_version < '3.10'",
+    "httpx2>=2.0.0; python_version >= '3.10'",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "bandit>=1.7.0",
+]
+server = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/Seshadri724/dxcli"
-Repository = "https://github.com/Seshadri724/dxcli"
-Issues = "https://github.com/Seshadri724/dxcli/issues"
+Homepage = "https://github.com/Seshadri724/diskrx"
+Repository = "https://github.com/Seshadri724/diskrx"
+Issues = "https://github.com/Seshadri724/diskrx/issues"
 
 [project.scripts]
-dxcli = "dxcli.cli:cli"
+dxcli = "dxcli.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["dxcli*"]
+exclude = ["plugins*", "tests*"]
 
 [tool.setuptools.package-data]
 dxcli = ["outputs/*.tcss"]
+
+[tool.black]
+line-length = 88
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
