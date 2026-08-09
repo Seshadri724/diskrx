@@ -34,7 +34,8 @@ def get_connection():
 def init_db():
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         CREATE TABLE IF NOT EXISTS hosts (
             host_id TEXT PRIMARY KEY,
             hostname TEXT,
@@ -43,8 +44,10 @@ def init_db():
             risk_score INTEGER,
             last_seen_at REAL
         )
-    """)
-    cur.execute("""
+        """
+    )
+    cur.execute(
+        """
         CREATE TABLE IF NOT EXISTS partitions (
             host_id TEXT,
             device TEXT,
@@ -57,7 +60,8 @@ def init_db():
             PRIMARY KEY (host_id, mountpoint),
             FOREIGN KEY (host_id) REFERENCES hosts(host_id) ON DELETE CASCADE
         )
-    """)
+        """
+    )
     conn.commit()
     conn.close()
 
@@ -173,7 +177,7 @@ def receive_snapshot(
             """
             INSERT OR REPLACE INTO hosts (host_id, hostname, platform, risk_level, risk_score, last_seen_at)
             VALUES (?, ?, ?, ?, ?, ?)
-        """,
+            """,
             (host_id, hostname, platform, risk_level, risk_score, timestamp),
         )
 
@@ -199,7 +203,7 @@ def receive_snapshot(
                 """
                 INSERT OR REPLACE INTO partitions (host_id, device, mountpoint, fstype, total_bytes, used_bytes, free_bytes, usage_percent)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
+                """,
                 (
                     host_id,
                     device,

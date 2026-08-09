@@ -43,7 +43,8 @@ class Database:
 
     def _init_db(self) -> None:
         cur = self._conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS snapshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp REAL,
@@ -51,8 +52,10 @@ class Database:
                 total_bytes INTEGER,
                 used_bytes INTEGER
             )
-        """)
-        cur.execute("""
+            """
+        )
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS directory_metrics (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 snapshot_id INTEGER,
@@ -61,15 +64,20 @@ class Database:
                 file_count INTEGER,
                 FOREIGN KEY(snapshot_id) REFERENCES snapshots(id)
             )
-        """)
-        cur.execute("""
+            """
+        )
+        cur.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_snapshots_mount_ts
             ON snapshots(mountpoint, timestamp)
-        """)
-        cur.execute("""
+            """
+        )
+        cur.execute(
+            """
             CREATE INDEX IF NOT EXISTS idx_dirmetrics_path
             ON directory_metrics(path)
-        """)
+            """
+        )
         self._conn.commit()
 
     def record_snapshot(self, partition: Partition, top_dirs: List[DirNode]) -> None:
@@ -192,7 +200,7 @@ class Database:
                 """
                 DELETE FROM directory_metrics
                 WHERE snapshot_id IN (SELECT id FROM snapshots WHERE timestamp < ?)
-            """,
+                """,
                 (cutoff,),
             )
             cur.execute("DELETE FROM snapshots WHERE timestamp < ?", (cutoff,))

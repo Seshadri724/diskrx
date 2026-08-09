@@ -46,10 +46,11 @@ jobs:
         run: pytest tests/ -v -W error::RuntimeWarning
 
       - name: Lint
+        if: matrix.python-version == '3.11'
         run: |
           flake8 dxcli tests plugins
           black --check dxcli tests plugins
 
       - name: Security scan
+        if: matrix.python-version == '3.11'
         run: bandit -r dxcli -q -ll
-
