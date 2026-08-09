@@ -63,7 +63,7 @@ class DiskPredictor:
         if data_points >= 3:
             try:
                 x = np.array([h["timestamp"] for h in history], dtype=float)
-                x = x - x[0]
+                x = x - np.mean(x)  # center to improve polyfit numerics
                 y = np.array([h["used_bytes"] for h in history], dtype=float)
                 if len(np.unique(x)) > 1:
                     p = np.polyfit(x, y, 1)
@@ -112,11 +112,11 @@ class DiskPredictor:
                 data_points=data_points,
             )
 
-        # Check log rotation case
+        # Check log rotation case – detect sudden usage drops
         recent_24h = [h for h in history if h["timestamp"] >= time.time() - 86400]
         if len(recent_24h) >= 2:
             x_24h = np.array([h["timestamp"] for h in recent_24h], dtype=float)
-            x_24h = x_24h - x_24h[0]
+            x_24h = x_24h - np.mean(x_24h)  # center to improve polyfit numerics
             y_24h = np.array([h["used_bytes"] for h in recent_24h], dtype=float)
             if len(np.unique(x_24h)) > 1:
                 try:
@@ -125,6 +125,15 @@ class DiskPredictor:
                         hint = "rotated recently"
                 except Exception:
                     pass
+            # Also detect a large single-interval drop at the tail,
+            # which a full-window linear fit can miss when growth
+            # before the drop cancels it out.
+            if hint is None:
+                last_delta = float(y_24h[-1] - y_24h[-2])
+                if last_delta < 0:
+                    drop_frac = abs(last_delta) / float(partition.total_bytes)
+                    if drop_frac >= 0.20:
+                        hint = "rotated recently"
 
         if (
             daily_growth <= 1024 * 1024

@@ -29,7 +29,7 @@ class GrowthTracker:
         # Extract timestamps and sizes
         timestamps = np.array([h["timestamp"] for h in history])
         sizes = np.array([h["size_bytes"] for h in history])
-        timestamps = timestamps - timestamps[0]
+        timestamps = timestamps - np.mean(timestamps)  # center for numerics
         if np.max(timestamps) <= np.min(timestamps):
             return None
 
@@ -67,7 +67,7 @@ class GrowthTracker:
 
         timestamps = np.array([h["timestamp"] for h in history])
         sizes = np.array([h["used_bytes"] for h in history])
-        timestamps = timestamps - timestamps[0]
+        timestamps = timestamps - np.mean(timestamps)  # center for numerics
 
         time_span = max(timestamps) - min(timestamps)
         if time_span <= 0:
