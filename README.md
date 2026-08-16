@@ -2,8 +2,8 @@
 
 `dxcli` keeps GitHub Actions runners, dev containers, Docker builds, and server fleets from crashing due to disk exhaustion. It diagnoses **what** filled the drive, **which process** did it, forecasts time-to-full, and gives you actionable, reversible fixes.
 
-[![PyPI](https://img.shields.io/pypi/v/dxcli.svg)](https://pypi.org/project/dxcli/)
-[![Python versions](https://img.shields.io/pypi/pyversions/dxcli.svg)](https://pypi.org/project/dxcli/)
+[![PyPI](https://img.shields.io/pypi/v/diskrx.svg)](https://pypi.org/project/diskrx/)
+[![Python versions](https://img.shields.io/pypi/pyversions/diskrx.svg)](https://pypi.org/project/diskrx/)
 [![Tests](https://github.com/Seshadri724/diskrx/actions/workflows/test.yml/badge.svg)](https://github.com/Seshadri724/diskrx/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -39,7 +39,7 @@ Tools like `du` and `ncdu` show you where bytes live. `dxcli` tells you **what c
 
 ```bash
 # Install via pip
-pip install dxcli
+pip install diskrx
 
 # 1. Check system partition health
 dxcli status
@@ -188,8 +188,8 @@ rules:
 
 ## 📖 Documentation
 
-- **[Developer Guide (GUIDE.md)](GUIDE.md)** — In-depth architectural guide, all commands, flags, and production setups.
-- **[CI/CD Playbook (GUIDE_CI.md)](GUIDE_CI.md)** — Full integration examples for GitHub Actions, GitLab CI, Jenkins, Bitbucket, and Azure DevOps.
+- **[Developer Guide (GUIDE.md)](https://github.com/Seshadri724/diskrx/blob/master/GUIDE.md)** — In-depth architectural guide, all commands, flags, and production setups.
+- **[CI/CD Playbook (GUIDE_CI.md)](https://github.com/Seshadri724/diskrx/blob/master/GUIDE_CI.md)** — Full integration examples for GitHub Actions, GitLab CI, Jenkins, Bitbucket, and Azure DevOps.
 
 ---
 
@@ -219,4 +219,4 @@ pytest
 
 ## 📄 License
 
-Distributed under the [MIT License](LICENSE).
+Distributed under the [MIT License](https://github.com/Seshadri724/diskrx/blob/master/LICENSE).
