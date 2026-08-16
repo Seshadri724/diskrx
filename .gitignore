@@ -151,17 +151,23 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# PyCharm
+# IDEs and AI Assistants
 .idea/
-
-# VS Code
 .vscode/
+.claude/
+.gemini/
+.agents/
+.cursor/
+.windsurf/
 
 # Project specific
 history.db
 history.db-journal
+fleet_snapshots.db
 *.db
 .dx/
+*.tmp
+*.bak
 
 # Project-specific internal docs (not for distribution)
 AGENT_BUILD_BRIEF.md
@@ -175,3 +181,4 @@ test_report.html
 report.html
 
 launch/
+
