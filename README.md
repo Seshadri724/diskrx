@@ -123,7 +123,7 @@ Linear regression against historical snapshots — useful for catching slow leak
     docker: true
 ```
 
-See [action.yml](action.yml) for all inputs.
+See [action.yml](https://github.com/Seshadri724/diskrx/blob/master/action.yml) for all inputs.
 
 ---
 
@@ -154,7 +154,7 @@ dxcli diagnose / --report disk-report.html
 
 ## Production / SRE use
 
-`dxcli` also runs unattended as a systemd service for fleet-wide monitoring (`dxcli daemon`, `dxcli serve`, webhook alerts, hardened sandboxing). See [GUIDE.md](GUIDE.md) for the production playbook — the same engine, just configured for long-running hosts.
+`dxcli` also runs unattended as a systemd service for fleet-wide monitoring (`dxcli daemon`, `dxcli serve`, webhook alerts, hardened sandboxing). See [GUIDE.md](https://github.com/Seshadri724/diskrx/blob/master/GUIDE.md) for the production playbook — the same engine, just configured for long-running hosts.
 
 ---
 
@@ -164,7 +164,7 @@ dxcli diagnose / --report disk-report.html
 pip install dxcli
 ```
 
-Requires Python 3.8+. Tested on CPython 3.8–3.12 across Linux, macOS, and Windows. No telemetry, no network calls unless you configure webhooks. Docker analysis requires a reachable Docker socket.
+Requires Python 3.8+. CI covers CPython 3.8–3.12 on Linux, plus 3.12 on macOS and Windows. No telemetry, no network calls unless you configure webhooks. Docker analysis requires a reachable Docker socket.
 
 ---
 
@@ -190,7 +190,7 @@ Issues and PRs welcome at <https://github.com/Seshadri724/diskrx/issues>.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](https://github.com/Seshadri724/diskrx/blob/master/LICENSE).
 
 <p align="center">
   Built so your CI build doesn't die at 87%.
