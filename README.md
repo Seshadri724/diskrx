@@ -154,7 +154,7 @@ dxcli diagnose / --report disk-report.html
 
 ## Production / SRE use
 
-`dxcli` also runs unattended as a systemd service for fleet-wide monitoring (`dxcli daemon`, `dxcli serve`, webhook alerts, hardened sandboxing). See [GUIDE.md](https://github.com/Seshadri724/diskrx/blob/master/GUIDE.md) for the production playbook — the same engine, just configured for long-running hosts.
+`dxcli` also runs unattended as a systemd service for fleet-wide monitoring (`dxcli daemon`, `dxcli serve`, webhook alerts, hardened sandboxing) — the same engine, just configured for long-running hosts.
 
 ---
 
