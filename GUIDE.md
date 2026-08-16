@@ -36,14 +36,14 @@
 
 ## Installation
 
-`dxcli` is distributed via PyPI and supports Python 3.8+ on Linux, macOS, and Windows.
+`dxcli` is distributed on PyPI as [`diskrx`](https://pypi.org/project/diskrx/) and supports Python 3.8+ on Linux, macOS, and Windows. The install name is `diskrx`; the command it installs is `dxcli`.
 
 ```bash
-# Install core package
-pip install dxcli
+# Install core package (installs the `dxcli` command)
+pip install diskrx
 
 # Or install with enterprise/server capabilities (FastAPI + Uvicorn)
-pip install "dxcli[server]"
+pip install "diskrx[server]"
 ```
 
 ---

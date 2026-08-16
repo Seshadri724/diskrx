@@ -37,6 +37,8 @@ Tools like `du` and `ncdu` show you where bytes live. `dxcli` tells you **what c
 
 ## 🚀 Quick Start
 
+> **Install name vs. command name:** the package installs from PyPI as **`diskrx`**, and provides the **`dxcli`** command.
+
 ```bash
 # Install via pip
 pip install diskrx

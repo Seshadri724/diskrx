@@ -135,7 +135,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dxcli
-        run: pip install dxcli
+        run: pip install diskrx
 
       # 1. Pre-build check (silent unless critical pressure)
       - name: Pre-build Disk Guard
@@ -170,7 +170,7 @@ disk-guard:
   stage: guard
   image: python:3.12-slim
   script:
-    - pip install dxcli
+    - pip install diskrx
     - dxcli ci
 
 build-job:
@@ -178,7 +178,7 @@ build-job:
   image: docker:latest
   before_script:
     - apk add --no-cache python3 py3-pip
-    - pip install dxcli --break-system-packages
+    - pip install diskrx --break-system-packages
     - dxcli snapshot-baseline --baseline /tmp/dx-base.json .
   script:
     - ./build.sh
@@ -204,7 +204,7 @@ pipeline {
     stages {
         stage('Pre-Build Guard') {
             steps {
-                sh 'pip install dxcli'
+                sh 'pip install diskrx'
                 // Fails immediately if disk is >= 90% or policies breached
                 sh 'dxcli ci'
                 sh 'dxcli snapshot-baseline --baseline /tmp/jenkins-base.json .'
@@ -246,7 +246,7 @@ jobs:
       - run:
           name: Pre-Build Disk Guard
           command: |
-            pip install dxcli
+            pip install diskrx
             dxcli ci
             dxcli snapshot-baseline --baseline /tmp/circle-base.json .
       - run:
@@ -272,7 +272,7 @@ pipelines:
     - step:
         name: Build with Disk Guard
         script:
-          - pip install dxcli
+          - pip install diskrx
           - dxcli ci
           - dxcli snapshot-baseline --baseline /tmp/bb-base.json .
           - ./build.sh
@@ -299,7 +299,7 @@ steps:
       versionSpec: "3.12"
 
   - script: |
-      pip install dxcli
+      pip install diskrx
       dxcli ci
       dxcli snapshot-baseline --baseline $(Agent.TempDirectory)/base.json .
     displayName: "Pre-Build Disk Guard"

@@ -22,6 +22,7 @@ import sys
 from dataclasses import asdict
 from typing import Any, Dict, List, Optional
 
+from . import __version__
 from .analyzers.predictor import DiskPredictor
 from .autopsy import run_autopsy
 from .clean_engine import CleanEngine
@@ -295,7 +296,7 @@ class McpServer:
                     "result": {
                         "protocolVersion": "2024-11-05",
                         "capabilities": {"tools": {}},
-                        "serverInfo": {"name": "dxcli", "version": "0.3.0"},
+                        "serverInfo": {"name": "dxcli", "version": __version__},
                     },
                 }
                 sys.stdout.write(json.dumps(resp) + "\n")
