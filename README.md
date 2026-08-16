@@ -1,28 +1,17 @@
-# dxcli — The disk doctor for your CI pipeline and dev box
+# dxcli — The Disk Doctor for Your CI Pipeline, Dev Box, and Servers
 
-`dxcli` keeps GitHub Actions runners, dev containers, and Docker builds from running out of disk. It diagnoses *what* filled the drive, *which process* did it, and gives you a one-line fix.
+`dxcli` keeps GitHub Actions runners, dev containers, Docker builds, and server fleets from crashing due to disk exhaustion. It diagnoses **what** filled the drive, **which process** did it, forecasts time-to-full, and gives you actionable, reversible fixes.
 
 [![PyPI](https://img.shields.io/pypi/v/dxcli.svg)](https://pypi.org/project/dxcli/)
 [![Python versions](https://img.shields.io/pypi/pyversions/dxcli.svg)](https://pypi.org/project/dxcli/)
 [![Tests](https://github.com/Seshadri724/diskrx/actions/workflows/test.yml/badge.svg)](https://github.com/Seshadri724/diskrx/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Downloads](https://img.shields.io/pypi/dm/dxcli.svg)](https://pypi.org/project/dxcli/)
 
-> `No space left on device` at 87% through a CI build isn't a disk problem — it's a *diagnosis* problem. `dxcli` is the diagnosis.
-
-<!-- DEMO GIF (add before launch):
-     The money shot is a red failing CI log → `dxcli ci` → "Primary culprit + one-line fix" in ~15s.
-     Record with asciinema (asciinema.org) or termtosvg, export a GIF to docs/assets/demo.gif,
-     then uncomment the block below. Until then, the sample output beneath stands in as the visual.
-
-<p align="center">
-  <img src="docs/assets/demo.gif" alt="dxcli diagnosing a full CI runner in a single command" width="760">
-</p>
--->
+> *"No space left on device at minute 45 of a 50-minute CI build isn't a disk problem — it's a diagnosis problem."*
 
 ---
 
-## What it looks like
+## ⚡ What It Looks Like
 
 ```console
 $ dxcli diagnose . --docker
@@ -42,156 +31,192 @@ $ dxcli diagnose . --docker
   Exit: 1  (critical: partition >= 90% used)
 ```
 
-`du`, `ncdu`, and `dust` show you the bytes. `dxcli` tells you **what filled the disk, which process did it, and how to fix it** — and exits non-zero in CI so your pipeline fails fast instead of failing weird.
+Tools like `du` and `ncdu` show you where bytes live. `dxcli` tells you **what caused the pressure, which process is writing to it right now, and how to fix it** — with exit codes specifically tailored for CI/CD fail-fast pipelines.
 
 ---
 
-## Why dxcli?
-
-You've seen these before:
-
-- `No space left on device` halfway through a CI build.
-- `Error response from daemon: write /var/lib/docker/...: no space left on device`.
-- A dev container that mysteriously crawls after a few weeks of `npm install` cycles.
-- A GitHub Actions runner that passes locally and fails in CI because the runner image hit 90% used.
-
-`dxcli` answers the question those errors don't: **now what?**
-
----
-
-## Quick start
+## 🚀 Quick Start
 
 ```bash
+# Install via pip
 pip install dxcli
-```
 
-### In GitHub Actions (the one-liner)
+# 1. Check system partition health
+dxcli status
 
-```yaml
-- name: Disk guard
-  run: |
-    pip install dxcli
-    dxcli ci
-```
+# 2. Fast-fail CI check (silent on success, exits 1 on >= 90% pressure)
+dxcli ci
 
-`dxcli ci` is the CI-mode shortcut: silent on success, exits `1` on critical disk pressure or policy violations, and includes Docker analysis automatically.
-
-### Before a `docker build`
-
-```bash
-dxcli diagnose . --docker
-```
-
-Surfaces dangling images, stale build cache, and the prescriptions to reclaim them (`docker builder prune`, `docker image prune -a`, etc.) — with the actual bytes each would free.
-
-### In your dev container
-
-```bash
+# 3. Categorize developer disk usage in home directory
 dxcli diagnose ~ --classify
+
+# 4. Launch interactive terminal TUI dashboard
+dxcli dash
 ```
 
-Groups usage by category (node_modules, Python venvs, build artifacts, cache directories, logs) so you can see at a glance whether it's `~/.cache/pip` or that one `node_modules` from 2024 that's killing you.
+---
+
+## 🔑 Key Capabilities
+
+### 1. Two-Phase CI/CD Guard & Autopsy
+- **Phase 1 (Pre-Build Guard)**: Fail fast in < 2 seconds if a runner is already starved of disk (`dxcli ci`).
+- **Phase 2 (Post-Build Autopsy)**: Compare against a pre-build baseline (`dxcli snapshot-baseline`) to pinpoint exact directories or Docker layers that grew during the build (`dxcli autopsy`).
+- **Rich CI Integration**: Automatically renders markdown summaries into `$GITHUB_STEP_SUMMARY` and posts PR comments.
+
+### 2. Docker Storage & BuildKit Diagnosis
+- Correlates Docker internal objects (images, containers, anonymous volumes, BuildKit cache) with system disk metrics.
+- Surfaces actionable commands with exact byte-reclamation estimates.
+
+### 3. Active Process Attribution & IO Mapping
+- Uses throughput sampling and open file handle inspection to identify which active processes (`pid`, process name, command line) are writing to bloated paths.
+
+### 4. Semantic Storage Classification
+- Automatically aggregates unorganized directories into intuitive developer categories:
+  - `node_modules` & dependency trees
+  - Python virtual environments (`.venv`, `conda`)
+  - Package manager caches (`pip`, `npm`, `yarn`, `cargo`, `pnpm`)
+  - Build targets (`dist/`, `build/`, `target/`)
+  - System and application logs
+
+### 5. Safe & Reversible Remediation
+- `dxcli clean` previews and purges stale caches, build bloat, and orphaned containers.
+- `dxcli heal` applies deterministic remediation policies with strict realpath scoping to prevent symlink traversal attacks.
+- `dxcli undo` rolls back the previous cleanup action.
+
+### 6. AI Agent Integration (MCP Protocol)
+- Ships with a native **Model Context Protocol (MCP)** server (`dxcli mcp`).
+- Allows AI coding assistants (Claude Desktop, Cursor, Antigravity) to inspect storage diagnostics and safely execute remediation workflows.
+
+### 7. Production Fleet & Prometheus Monitoring
+- Run as a background daemon (`dxcli daemon start`).
+- Expose Prometheus metrics endpoint (`dxcli serve --port 8000`).
+- Generate hardened, sandboxed systemd service units (`dxcli generate-service`).
+- Query and aggregate multi-host clusters (`dxcli fleet`).
 
 ---
 
-## Core features
+## 🐙 GitHub Action Usage
 
-### Exit-code-aware CI mode
-`dxcli ci` and `dxcli diagnose --ci` exit `1` on critical thresholds. Drop it in as a pre-build step; your pipeline fails the moment the runner is unhealthy, not 20 minutes later mid-build.
-
-### Docker-aware diagnosis
-`--docker` correlates Docker's own disk usage (images, containers, volumes, build cache) with system disk pressure. No more `docker system df` followed by "now what?"
-
-### Process attribution
-Most disk tools tell you *which directory* is full. `dxcli` tells you *which process is writing to it right now*, so you can find the runaway test runner or the misconfigured logger.
-
-### Predictive forecasting
-Linear regression against historical snapshots — useful for catching slow leaks in long-lived dev environments or shared CI runners before they bite.
-
-### Safe automated cleanup
-`dxcli heal <path>` applies scoped, reversible fixes — and `dxcli undo` reverts the last one. No untrusted plugins run by default.
-
----
-
-## Use it as a GitHub Action
+Drop the official composite action into your `.github/workflows/`:
 
 ```yaml
-- uses: Seshadri724/diskrx@v1
-  with:
-    path: .
-    fail-on-critical: true
-    docker: true
-```
+name: Build with Disk Guard & Autopsy
 
-See [action.yml](https://github.com/Seshadri724/diskrx/blob/master/action.yml) for all inputs.
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # For automated PR comments
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. Pre-build check & baseline snapshot
+      - name: Disk Baseline
+        uses: Seshadri724/diskrx@v1
+        with:
+          mode: "snapshot-baseline"
+          baseline-file: "baseline.json"
+          docker: "true"
+
+      # 2. Main Build Step
+      - name: Run Build
+        run: |
+          docker build -t my-app:latest .
+          npm test
+
+      # 3. Post-build growth autopsy (runs even on failure)
+      - name: Disk Growth Autopsy
+        if: always()
+        uses: Seshadri724/diskrx@v1
+        with:
+          mode: "autopsy"
+          baseline-file: "baseline.json"
+          summary: "true"
+          pr-comment: "true"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
 
 ---
 
-## Common recipes
+## 🛠️ CLI Cheatsheet
 
-### Fail a PR if the build leaves behind > 1 GB of junk
+| Command | Purpose |
+| :--- | :--- |
+| `dxcli status` | Quick summary of mounted partition usage and free space. |
+| `dxcli diagnose [PATH] --docker` | Comprehensive diagnostic scan including Docker container & cache analysis. |
+| `dxcli ci [PATH]` | CI fast-fail guard. Exits `1` on critical disk pressure or policy breach. |
+| `dxcli snapshot-baseline [PATH]` | Records baseline snapshot for CI differential growth tracking. |
+| `dxcli autopsy [PATH]` | Diffs usage against baseline and identifies growth culprits. |
+| `dxcli clean [PATH] --dry-run` | Previews safe, automated cleanup actions. |
+| `dxcli heal [PATH] -y` | Applies policy-based remediation actions. |
+| `dxcli undo` | Rolls back the last applied `heal` remediation. |
+| `dxcli diff [PATH] --hours 2` | Highlights directories that grew over the past 2 hours. |
+| `dxcli predict [PATH]` | Forecasts time until partition exhaustion using linear regression. |
+| `dxcli explain [PATH]` | Provides a human-readable narrative of disk pressure causes. |
+| `dxcli watch [PATH] --webhook URL`| Continuous monitoring loop with tripwire webhook alerting. |
+| `dxcli serve --port 8000` | Exposes HTTP and Prometheus metrics endpoint. |
+| `dxcli mcp` | Starts Model Context Protocol stdio server for AI agents. |
+| `dxcli dash` | Full-screen interactive Textual TUI dashboard. |
+
+---
+
+## 🔒 Policy as Code (`dx_policies.yaml`)
+
+Define deterministic storage rules in `dx_policies.yaml` at your repository root:
+
 ```yaml
-- run: dxcli diagnose ./build --ci
-```
+rules:
+  - name: Limit Build Artifacts
+    type: limit
+    path: dist/
+    max_size_gb: 2
+    action: Clean build directory
 
-### Catch the `npm install` that bloated the runner
-```bash
-dxcli diff . --hours 1
-```
-Shows directories that grew in the last hour, ranked.
-
-### Find what to delete in your home dir
-```bash
-dxcli diagnose ~ --classify
-```
-
-### Make a one-page HTML report you can attach to a bug
-```bash
-dxcli diagnose / --report disk-report.html
+  - name: Purge Old Test Fixtures
+    type: stale
+    path: tmp/
+    max_age_days: 3
+    action: Safe to delete
 ```
 
 ---
 
-## Production / SRE use
+## 📖 Documentation
 
-`dxcli` also runs unattended as a systemd service for fleet-wide monitoring (`dxcli daemon`, `dxcli serve`, webhook alerts, hardened sandboxing) — the same engine, just configured for long-running hosts.
-
----
-
-## Installation
-
-```bash
-pip install dxcli
-```
-
-Requires Python 3.8+. CI covers CPython 3.8–3.12 on Linux, plus 3.12 on macOS and Windows. No telemetry, no network calls unless you configure webhooks. Docker analysis requires a reachable Docker socket.
+- **[Developer Guide (GUIDE.md)](GUIDE.md)** — In-depth architectural guide, all commands, flags, and production setups.
+- **[CI/CD Playbook (GUIDE_CI.md)](GUIDE_CI.md)** — Full integration examples for GitHub Actions, GitLab CI, Jenkins, Bitbucket, and Azure DevOps.
 
 ---
 
-## Contributing
+## 🧪 Development & Testing
 
 ```bash
+# Clone the repository
 git clone https://github.com/Seshadri724/diskrx
 cd diskrx
-python -m venv venv
-# Windows: venv\Scripts\activate
-# Linux/macOS: source venv/bin/activate
-pip install -e ".[test]"
 
+# Create and activate virtual environment
+python -m venv .venv
+# Windows: .\.venv\Scripts\activate
+# Linux/macOS: source .venv/bin/activate
+
+# Install development dependencies
+pip install -e ".[test,server]"
+
+# Run quality checks and unit tests
 black --check dxcli tests
 flake8 dxcli tests
 bandit -r dxcli -q -ll
 pytest
 ```
 
-Issues and PRs welcome at <https://github.com/Seshadri724/diskrx/issues>.
-
 ---
 
-## License
+## 📄 License
 
-MIT — see [LICENSE](https://github.com/Seshadri724/diskrx/blob/master/LICENSE).
-
-<p align="center">
-  Built so your CI build doesn't die at 87%.
-</p>
+Distributed under the [MIT License](LICENSE).
