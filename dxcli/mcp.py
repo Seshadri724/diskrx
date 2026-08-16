@@ -282,7 +282,15 @@ class McpServer:
 
             try:
                 msg = json.loads(line)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
+                # Never stay silent: a client awaiting a reply would hang.
+                resp = {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32700, "message": f"Parse error: {exc}"},
+                }
+                sys.stdout.write(json.dumps(resp) + "\n")
+                sys.stdout.flush()
                 continue
 
             msg_id = msg.get("id")
@@ -317,7 +325,16 @@ class McpServer:
             elif method == "tools/call":
                 tool_name = params.get("name")
                 arguments = params.get("arguments", {})
-                result = self.handle_tool_call(tool_name, arguments)
+                try:
+                    result = self.handle_tool_call(tool_name, arguments)
+                except Exception as exc:
+                    # A raising tool must not kill the session or leak a
+                    # traceback onto stdout, which is the JSON-RPC channel.
+                    logger.exception("Tool %s failed", tool_name)
+                    result = {
+                        "content": [{"type": "text", "text": f"Tool error: {exc}"}],
+                        "isError": True,
+                    }
                 resp = {"jsonrpc": "2.0", "id": msg_id, "result": result}
                 sys.stdout.write(json.dumps(resp) + "\n")
                 sys.stdout.flush()
