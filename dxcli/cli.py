@@ -408,7 +408,7 @@ def ci_cmd(ctx, path, no_docker, as_json):
 
       - name: Disk guard
         run: |
-          pip install dxcli
+          pip install diskrx
           dxcli ci
     """
     ctx.invoke(

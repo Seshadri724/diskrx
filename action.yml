@@ -63,9 +63,9 @@ runs:
       shell: bash
       run: |
         if [ -n "${{ inputs.dxcli-version }}" ]; then
-          pip install "dxcli==${{ inputs.dxcli-version }}"
+          pip install "diskrx==${{ inputs.dxcli-version }}"
         else
-          pip install dxcli
+          pip install diskrx
         fi
 
     - name: Run dxcli

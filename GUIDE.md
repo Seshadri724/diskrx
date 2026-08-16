@@ -1,190 +1,264 @@
-# dxcli — the developer guide
+# dxcli — The Complete Developer Guide
 
-The disk doctor for your CI pipeline and dev box. This guide covers everything from a 30-second CI guard to long-running production deployments.
-
----
-
-## What you'll use it for
-
-- **CI pipelines** — fail fast when a runner is unhealthy instead of failing weird mid-build. See [CI integration](#ci-integration).
-- **Docker builds** — diagnose image bloat, dangling cache, and orphan volumes. See [Docker workflows](#docker-workflows).
-- **Dev containers and laptops** — find what's eating your home dir without grepping `du -sh *` for an hour. See [Local dev usage](#local-dev-usage).
-- **Long-running hosts** — daemon mode, webhook alerts, systemd sandboxing. See [Production deployment](#production-deployment).
+> **The disk doctor for your CI pipeline, dev box, and server fleet.**  
+> Diagnose what filled the drive, which process did it, fail fast in CI, and safely remediate bloat.
 
 ---
 
-## Quick start
+## 📑 Table of Contents
+
+- [What You'll Use It For](#what-youll-use-it-for)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Core Workflows](#core-workflows)
+  - [1. CI/CD Pre-Build Guard & Autopsy](#1-cicd-pre-build-guard--autopsy)
+  - [2. Docker Storage & Bloat Diagnosis](#2-docker-storage--bloat-diagnosis)
+  - [3. Local Dev Environment & Laptop Cleanup](#3-local-dev-environment--laptop-cleanup)
+  - [4. AI Agent Integration via MCP Server](#4-ai-agent-integration-via-mcp-server)
+  - [5. Production Daemon & Prometheus Monitoring](#5-production-daemon--prometheus-monitoring)
+  - [6. Multi-Host Fleet Aggregation](#6-multi-host-fleet-aggregation)
+- [CLI Command Reference](#cli-command-reference)
+- [Exit Code Reference](#exit-code-reference)
+- [Security, Sandboxing & Policy Model](#security-sandboxing--policy-model)
+- [Changelog & Architecture Highlights](#changelog--architecture-highlights)
+
+---
+
+## What You'll Use It For
+
+- **CI/CD Pipelines**: Fail fast in < 2 seconds when a runner is critically low on disk before starting a 45-minute build. Capture differential baselines and post-mortem autopsy reports with PR comments.
+- **Docker Hosts & Runners**: Diagnose image bloat, dangling cache, buildKit storage, and orphan volumes with actionable remediation commands.
+- **Dev Machines & Laptops**: Categorize storage into semantic groups (`node_modules`, Python venvs, cargo caches, Docker layers) instead of running `du -sh *` for an hour.
+- **AI Coding Agents**: Expose real-time disk diagnostics, file tree telemetry, and process attribution over Model Context Protocol (MCP).
+- **Production Servers & Fleets**: Monitor long-running hosts with background daemons, Prometheus metrics, and automated Slack/webhook alerts.
+
+---
+
+## Installation
+
+`dxcli` is distributed on PyPI as [`diskrx`](https://pypi.org/project/diskrx/) and supports Python 3.8+ on Linux, macOS, and Windows. The install name is `diskrx`; the command it installs is `dxcli`.
 
 ```bash
-pip install dxcli
-dxcli ci              # silent on success, exits 1 on critical pressure
-dxcli diagnose .      # interactive report on the current dir
-dxcli diagnose ~ --classify   # group home-dir usage by category
+# Install core package (installs the `dxcli` command)
+pip install diskrx
+
+# Or install with enterprise/server capabilities (FastAPI + Uvicorn)
+pip install "diskrx[server]"
 ```
 
 ---
 
-## CI integration
+## Quick Start
 
-The shortest possible drop-in:
+```bash
+# 1. Quick system partition overview
+dxcli status
 
-```yaml
-- name: Disk guard
-  run: |
-    pip install dxcli
-    dxcli ci
+# 2. Deep diagnosis on current workspace
+dxcli diagnose .
+
+# 3. Categorized breakdown of your home directory
+dxcli diagnose ~ --classify
+
+# 4. CI fast-fail check (silent on healthy, exits 1 on >= 90% disk pressure)
+dxcli ci
+
+# 5. Launch the interactive Textual TUI dashboard
+dxcli dash
 ```
-
-`dxcli ci` is equivalent to `dxcli diagnose . --ci --docker`. It exits `1` if:
-
-- Disk usage is ≥ 90% on the partition holding the path.
-- Any `[CRITICAL]` policy violation is found.
-
-### Why a pre-build guard
-Build agents are ephemeral or shared. `No space left on device` mid-build corrupts artifacts, produces cryptic I/O errors, and wastes 30–60 minutes of debugging. A guard step catches the problem in seconds and points at the cause.
-
-### Worked examples
-- [GitHub Actions workflow](docs/examples/github-actions.yml)
-- [GitLab CI snippet](docs/examples/gitlab-ci.yml)
-- [Composite GitHub Action](action.yml) — `uses: Seshadri724/dxcli@v1`
-- [Jenkins, full CI playbook](GUIDE_CI.md)
 
 ---
 
-## Docker workflows
+## Core Workflows
+
+### 1. CI/CD Pre-Build Guard & Autopsy
+
+`dxcli` provides a two-phase workflow for build pipelines:
+
+```bash
+# Step 1: Pre-build check (exits 1 if disk is >= 90% full or policies fail)
+dxcli ci
+
+# Step 2: Record baseline disk snapshot before compilation/docker builds
+dxcli snapshot-baseline --baseline /tmp/dx-baseline.json .
+
+# ... Run your build / tests / docker build ...
+
+# Step 3: Run post-build autopsy to pinpoint exact growth culprits
+dxcli autopsy --baseline /tmp/dx-baseline.json --summary .
+```
+
+*For complete CI configurations across GitHub Actions, GitLab CI, and Jenkins, see [GUIDE_CI.md](GUIDE_CI.md).*
+
+---
+
+### 2. Docker Storage & Bloat Diagnosis
+
+Correlates Docker's internal engine bookkeeping (images, containers, volumes, build cache) with system disk pressure:
 
 ```bash
 dxcli diagnose . --docker
 ```
 
-Correlates Docker's own bookkeeping (images, containers, volumes, build cache) with system disk pressure and prescribes specific cleanup commands (`docker builder prune`, `docker image prune -a`, …) with the actual bytes each would free.
-
-Use it:
-- Before a `docker build` in a tight runner.
-- As a post-step on failed builds to attach evidence to a bug report (`--report disk-report.html`).
-- Inside a multi-stage build to catch a bloated builder layer — see [docs/examples/Dockerfile](docs/examples/Dockerfile).
+`dxcli` generates clear prescriptions with exact byte estimations:
+- Unused build cache (`docker builder prune`)
+- Dangling images (`docker image prune`)
+- Stopped containers & unused anonymous volumes
 
 ---
 
-## Local dev usage
+### 3. Local Dev Environment & Laptop Cleanup
 
+#### Semantic Classification
+Groups disk usage into meaningful developer categories:
 ```bash
 dxcli diagnose ~ --classify
 ```
+Categories detected:
+- **Package Managers & Caches**: `npm`, `pip`, `yarn`, `cargo`, `go`, `pnpm`
+- **Virtual Environments**: `.venv`, `venv`, `env`, `conda`
+- **Dependencies**: `node_modules`, `vendor`
+- **Build Artifacts**: `target/`, `dist/`, `build/`, `out/`, `__pycache__`
+- **Logs & Dumps**: `*.log`, `*.dump`, `*.core`
 
-Groups disk usage by category — `node_modules`, Python venvs, build artifacts, caches (pip, npm, yarn, cargo), logs — so you can see at a glance whether it's `~/.cache/pip` or that one `node_modules` from 2024 that's killing you.
+#### Growth Diff & Predictions
+```bash
+# Find directories that grew in the last 2 hours
+dxcli diff . --hours 2
 
-Other useful commands on a dev box:
+# Linear regression time-to-full forecast based on historical snapshots
+dxcli predict /
 
-| Command | What it does |
-| --- | --- |
-| `dxcli diff . --hours 1` | Directories that grew in the last hour. Catches the `npm install` that bloated the disk. |
-| `dxcli predict /` | Estimates time-to-full via linear regression on historical snapshots. |
-| `dxcli heal <path>` | Applies scoped, reversible cleanup. `dxcli undo` reverts the last one. |
-| `dxcli dash` | TUI dashboard with live updates. |
+# Human-readable plain English explanation of disk pressure
+dxcli explain .
+```
 
-A devcontainer recipe is in [docs/examples/devcontainer.json](docs/examples/devcontainer.json); a git pre-commit hook is in [docs/examples/pre-commit-hook.sh](docs/examples/pre-commit-hook.sh).
+#### Safe Cleanup & Reversible Healing
+```bash
+# Preview safe automated cleanups
+dxcli clean --dry-run .
 
----
+# Apply safe scoped remediation
+dxcli heal /tmp --yes
 
-## Command reference
-
-### `dxcli ci [PATH]`
-CI shortcut. Equivalent to `dxcli diagnose PATH --ci --docker`. `--no-docker` skips Docker analysis; `--json` outputs structured results.
-
-### `dxcli diagnose [PATH]`
-Deep scan and diagnosis.
-- `--ci` — CI mode: exits 1 on critical pressure or policy violations.
-- `--docker` — include Docker disk usage.
-- `--classify` — group output by semantic category.
-- `--report file.html` — write a shareable HTML report.
-- `--json` — machine-readable output.
-- `--target NAME` — use a named target from `config.yaml`.
-- `--enable-plugins` — opt-in to local plugins from `~/.dx/plugins`.
-
-### `dxcli diff [PATH] --hours N`
-Show what grew (or shrank) since a past snapshot.
-
-### `dxcli predict [PATH]`
-Estimate time-to-full via linear regression on history.
-
-### `dxcli watch [PATH] --interval N --alert-threshold SIZE`
-Continuous monitoring. `--webhook URL` posts to Slack/PagerDuty; `--notify-desktop` raises native notifications.
-
-### `dxcli heal [PATH]` / `dxcli undo`
-Apply or revert scoped cleanup. Always preview with `--dry-run`.
-
-### `dxcli serve` / `dxcli daemon`
-`serve` exports Prometheus metrics; `daemon` runs `watch` or `serve` as a background process.
-
-### `dxcli fleet [HOSTS...]`
-Aggregate metrics across hosts.
-
-### `dxcli add-target` / `dxcli generate-service`
-Wizards for registering a monitor target and producing a hardened systemd unit.
-
-### `dxcli dash` / `dxcli demo`
-TUI dashboard and a synthetic dataset for trying things out.
+# Rollback the last remediation action if needed
+dxcli undo
+```
 
 ---
 
-## Production deployment
+### 4. AI Agent Integration via MCP Server
 
-The same engine that runs in a 60-second CI step also runs as a long-lived process for fleet monitoring.
+`dxcli` implements the **Model Context Protocol (MCP)**, allowing AI tools (such as Claude Desktop, Cursor, Antigravity, or custom LLM agents) to inspect disk health and diagnose bottlenecks:
 
-- **Hardened state directory** — `~/.dx` is locked to `0700`, `history.db` to `0600`.
-- **Atomic writes** — state is never left partial across crashes.
-- **Systemd sandboxing** — `generate-service` produces a unit with `NoNewPrivileges` and `ProtectSystem=strict`.
-- **Plugin opt-in** — community plugins never execute without explicit `--enable-plugins`.
-- **Zero-trust healing** — `heal` enforces realpath-based scoping; symlink escapes are rejected.
-- **Reversibility** — every `heal` action is recorded; `undo` rolls it back.
+```bash
+# Run stdio MCP server (read-only by default)
+dxcli mcp
 
-Use the same `dxcli ci` pattern for canary jobs on production hosts, or `dxcli daemon start --command serve` to export Prometheus metrics.
-
----
-
-## Philosophy
-
-1. **Prescription over description** — tell the user what to do, not just what they have.
-2. **Attribution is key** — every byte has a parent process. Find it.
-3. **Safe remediation** — every automated action must be auditable and reversible.
-4. **Fail fast in CI, never fail weird** — exit codes are a feature.
+# Allow scoped remediation tool calls via MCP
+dxcli mcp --allow heal,clean
+```
 
 ---
 
-## Project evolution log
+### 5. Production Daemon & Prometheus Monitoring
 
-### Iteration 5: Production hardening
-*2026-05-12 — "secure by default"*
-- Plugin execution gated behind `--enable-plugins`.
-- `HealEngine` enforces realpath-based scoping; symlink escapes blocked.
-- Centralized atomic writes via `dxcli/state.py`.
-- `0700` / `0600` enforced via a unified state provider.
-- Lifecycle hardening for Sentinel and Watch.
-- Quality gates: `flake8`, `black`, `bandit`.
+Run continuous monitoring with native desktop alerts or webhooks:
 
-### Iteration 4: Attribution and Docker
-*2026-05-12*
-- Throughput-sampling process mapper (bytes/sec, not just PID lists).
-- Docker Analyzer: dangling layers, build cache, estimated savings.
-- Named targets / YAML config; `add-target` and `--target`.
-- `generate-service` for hardened systemd units.
-- Cross-platform desktop notifications.
-- `fleet` for multi-host aggregation.
+```bash
+# Foreground watch loop with webhook alert threshold
+dxcli watch /var/log --interval 60 --alert-threshold 10G --webhook https://hooks.slack.com/services/...
 
-### Iteration 3: Diff engine and shareable reports
-*2026-04-24*
-- `dxcli diff` against historical snapshots.
-- `--alert-threshold` tripwires for `watch`.
-- Self-contained HTML reports via `--report`.
+# Start as background daemon
+dxcli daemon start --command watch --target my-app --webhook https://hooks.slack.com/...
 
-### Iteration 2: Foundations
-*2026-04-14*
-- Parallel BFS scanner.
-- YAML policy engine.
-- Plugin SDK with sample analyzers.
-- Reversible remediation with `undo`.
+# Export Prometheus metrics endpoint on port 8000
+dxcli serve --port 8000 --bind 0.0.0.0
+```
+
+To generate a hardened, sandboxed systemd service file:
+```bash
+dxcli generate-service --target my-app --user dxcli > /etc/systemd/system/dxcli.service
+```
 
 ---
 
-*Updated with every release.*
+### 6. Multi-Host Fleet Aggregation
+
+Aggregate disk telemetry across multiple remote nodes:
+
+```bash
+# Query active fleet nodes
+dxcli fleet --hosts worker-1.internal:8000,worker-2.internal:8000
+
+# Push local snapshot to centralized fleet ingest server
+dxcli snapshot . --push https://fleet.internal/api/v1/snapshot --token $FLEET_TOKEN --anonymize
+```
+
+---
+
+## CLI Command Reference
+
+| Command | Key Flags | Description |
+| :--- | :--- | :--- |
+| `dxcli status` | *(none)* | Fast overview of all partition mount points, usage %, and free space. |
+| `dxcli diagnose [PATH]` | `--ci`, `--docker`, `--classify`, `--report <file.html>`, `--json`, `--threads <N>`, `--nice <N>` | Comprehensive disk scan, process mapping, and rule validation. |
+| `dxcli ci [PATH]` | `--no-docker`, `--json` | Fast-fail pre-build guard (alias for `diagnose --ci --docker`). Exits `1` on critical state. |
+| `dxcli snapshot-baseline [PATH]`| `--baseline <file.json>`, `--no-docker` | Captures baseline snapshot before CI build steps. |
+| `dxcli autopsy [PATH]` | `--baseline <file.json>`, `--format <text\|json\|markdown>`, `--summary`, `--pr-comment` | Diffs post-build usage against baseline and identifies growth culprits. |
+| `dxcli clean [PATH]` | `--dry-run`, `--yes/-y`, `--no-docker`, `--json` | Interactive/automated cleaner for stale caches, tmp files, and dangling docker layers. |
+| `dxcli heal [PATH]` | `--dry-run`, `--yes/-y` | Applies safe, scoped remediation rules. |
+| `dxcli undo` | *(none)* | Reverts the most recent `heal` action using recorded state logs. |
+| `dxcli diff [PATH]` | `--hours <N>` | Compares current directory sizes with a previous snapshot from *N* hours ago. |
+| `dxcli predict [PATH]` | *(none)* | Forecasts time until partition exhaustion using linear regression on history. |
+| `dxcli explain [PATH]` | *(none)* | Generates plain-English narrative of why disk pressure exists. |
+| `dxcli watch [PATH]` | `--interval <sec>`, `--alert-threshold <size>`, `--webhook <URL>`, `--notify-desktop` | Continuous monitoring loop with tripwire alerting. |
+| `dxcli serve` | `--port <P>`, `--bind <IP>`, `--interval <sec>`, `--auth-token <TOK>` | Starts HTTP/Prometheus metrics exporter. |
+| `dxcli daemon <action>` | `start`, `stop`, `status` (`--command watch\|serve`, `--target <name>`) | Background process supervisor for watch/serve. |
+| `dxcli fleet [HOSTS...]`| `--port <P>`, `--server <URL>`, `--token <TOK>` | Centralized fleet query and multi-host monitoring dashboard. |
+| `dxcli snapshot [PATH]` | `--json`, `--push <URL>`, `--token <TOK>`, `--anonymize` | Ad-hoc snapshot generation and fleet upload. |
+| `dxcli add-target` | *(interactive)* | Configures named monitoring target in `~/.dx/config.yaml`. |
+| `dxcli generate-service`| `--target <name>`, `--user <username>` | Emits production-ready, sandboxed systemd service definition. |
+| `dxcli prune` | `--days <N>` | Purges historical SQLite database records older than *N* days (default: 30). |
+| `dxcli plugins` | *(none)* | Lists discovered plugins and trust verification status. |
+| `dxcli trust [PATH]` | *(none)* | Computes SHA256 checksum and marks a local plugin as trusted. |
+| `dxcli mcp` | `--allow <tools>` | Starts Model Context Protocol stdio server for LLM integration. |
+| `dxcli dash` | *(none)* | Opens full-screen interactive Textual Terminal User Interface (TUI). |
+| `dxcli demo` | *(none)* | Seeds realistic synthetic snapshots for sandbox testing. |
+
+---
+
+## Exit Code Reference
+
+| Exit Code | Constant | Meaning |
+| :---: | :--- | :--- |
+| `0` | `SUCCESS` | Healthy state. Disk usage < 90% and all policies satisfied. |
+| `1` | `CRITICAL_PRESSURE` | Disk usage ≥ 90% or `[CRITICAL]` policy rule breached in CI mode. |
+| `2` | `VALIDATION_ERROR` | Invalid CLI arguments, missing baseline file, or bad configuration. |
+| `3` | `RUNTIME_ERROR` | Unhandled runtime exception or missing OS dependencies. |
+| `4` | `PARTIAL_SCAN` | Scan completed with non-fatal permission or access errors on subdirectories. |
+
+---
+
+## Security, Sandboxing & Policy Model
+
+1. **State Directory Hardening**: `~/.dx` directory permissions are locked to `0700`, and `history.db` is locked to `0600`.
+2. **Atomic Writes**: All state, baseline, and configuration files are written using atomic swap operations to prevent corruptions during sudden aborts.
+3. **Symlink Escape Protection**: `HealEngine` and `CleanEngine` resolve `realpath` on all targets to prevent path traversal or symlink redirection attacks.
+4. **Sandboxed Plugins**: Plugins are disabled by default. Executing plugins requires explicit `--enable-plugins` and cryptographic hash verification via `dxcli trust`.
+5. **Declarative Policies**: Create a `dx_policies.yaml` in your workspace root to define custom limits:
+
+```yaml
+rules:
+  - name: Build Artifact Ceiling
+    type: limit
+    path: dist/
+    max_size_gb: 2
+    action: Clean build directory
+
+  - name: Stale Temporary Logs
+    type: stale
+    path: /tmp
+    max_age_days: 3
+    action: Safe to delete
+```

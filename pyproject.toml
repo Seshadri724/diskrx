@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dxcli"
+name = "diskrx"
 version = "0.3.0"
 description = "The disk doctor for your CI pipeline and dev box — diagnose what filled the drive, which process did it, and fail fast in CI"
 authors = [
