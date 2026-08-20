@@ -25,8 +25,9 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-dxcli-0.3.0/
-diskrx-0.3.0/
+# Extracted sdist trees, any version
+/dxcli-*/
+/diskrx-*/
 
 # PyInstaller
 #  Usually these files are written by a python script or a tool during building

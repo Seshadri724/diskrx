@@ -87,7 +87,9 @@ dxcli dash
 
 ### 6. AI Agent Integration (MCP Protocol)
 - Ships with a native **Model Context Protocol (MCP)** server (`dxcli mcp`).
-- Allows AI coding assistants (Claude Desktop, Cursor, Antigravity) to inspect storage diagnostics and safely execute remediation workflows.
+- Lets AI coding assistants (Claude Desktop, Claude Code, Cursor) inspect storage diagnostics: `disk_status`, `diagnose`, `diff`, `predict`, and `clean_preview`.
+- **Read-only by design** — no MCP tool deletes or modifies anything, and `--allow <path>` restricts which directories an agent may read. Remediation (`heal`, `clean`, `undo`) stays on the CLI.
+- Setup: `claude mcp add dxcli -- python -m dxcli mcp`, or see [GUIDE.md](https://github.com/Seshadri724/diskrx/blob/master/GUIDE.md) for Claude Desktop and Cursor config.
 
 ### 7. Production Fleet & Prometheus Monitoring
 - Run as a background daemon (`dxcli daemon start`).

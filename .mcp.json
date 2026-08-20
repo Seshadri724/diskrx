@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "dxcli": {
+      "command": "python",
+      "args": ["-m", "dxcli", "mcp"]
+    }
+  }
+}

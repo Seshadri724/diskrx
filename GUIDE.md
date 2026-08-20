@@ -149,15 +149,75 @@ dxcli undo
 
 ### 4. AI Agent Integration via MCP Server
 
-`dxcli` implements the **Model Context Protocol (MCP)**, allowing AI tools (such as Claude Desktop, Cursor, Antigravity, or custom LLM agents) to inspect disk health and diagnose bottlenecks:
+`dxcli` implements the **Model Context Protocol (MCP)**, allowing AI tools (such as
+Claude Desktop, Claude Code, or Cursor) to inspect disk health and diagnose bottlenecks.
+
+The server speaks JSON-RPC 2.0 over stdio. Run it directly to check it responds:
 
 ```bash
-# Run stdio MCP server (read-only by default)
 dxcli mcp
-
-# Allow scoped remediation tool calls via MCP
-dxcli mcp --allow heal,clean
 ```
+
+#### Exposed tools
+
+Five tools, all **read-only** — none of them delete, move, or modify anything:
+
+| Tool | Returns |
+| :--- | :--- |
+| `disk_status` | Capacity, used bytes, free bytes, usage percent for a mountpoint. |
+| `diagnose` | Top storage consumers, logs, stale files, prescriptions. |
+| `diff` | Storage growth against a pre-build baseline snapshot. |
+| `predict` | Time-to-full forecast and daily growth rate. |
+| `clean_preview` | Dry-run cleanup plan; reports reclaimable bytes, deletes nothing. |
+
+`heal`, `clean`, and `undo` are deliberately **not** exposed over MCP. Remediation stays
+on the CLI, where a human runs it.
+
+#### Restricting which directories an agent can read
+
+`--allow` takes **directory paths**, and may be repeated. It does not take tool names.
+With no `--allow`, the server permits the current working directory and the user's home.
+
+```bash
+# Limit the agent to two project trees
+dxcli mcp --allow /srv/app --allow /var/log/app
+```
+
+Any tool call targeting a path outside the allowed trees returns an `Access denied` error.
+
+#### Connecting a client
+
+Use an **absolute path** to the interpreter. MCP clients start the server in a bare
+environment where a virtualenv's `dxcli` script is usually not on `PATH`; the
+`-m dxcli` form always resolves.
+
+**Claude Code** — from the project directory:
+
+```bash
+claude mcp add dxcli -- /absolute/path/to/.venv/bin/python -m dxcli mcp
+```
+
+**Claude Desktop** — edit `claude_desktop_config.json`
+(macOS: `~/Library/Application Support/Claude/`, Windows: `%APPDATA%\Claude\`),
+then restart the app:
+
+```json
+{
+  "mcpServers": {
+    "dxcli": {
+      "command": "/absolute/path/to/.venv/bin/python",
+      "args": ["-m", "dxcli", "mcp", "--allow", "/absolute/path/to/your/project"]
+    }
+  }
+}
+```
+
+On Windows the command is `C:\\path\\to\\.venv\\Scripts\\python.exe`.
+
+**Cursor** — same `mcpServers` block in `.cursor/mcp.json`.
+
+Once connected, ask the agent things like *"what filled this disk, and which process
+did it?"* — it will call `diagnose` and read back the culprit and the owning PID.
 
 ---
 
@@ -222,7 +282,7 @@ dxcli snapshot . --push https://fleet.internal/api/v1/snapshot --token $FLEET_TO
 | `dxcli prune` | `--days <N>` | Purges historical SQLite database records older than *N* days (default: 30). |
 | `dxcli plugins` | *(none)* | Lists discovered plugins and trust verification status. |
 | `dxcli trust [PATH]` | *(none)* | Computes SHA256 checksum and marks a local plugin as trusted. |
-| `dxcli mcp` | `--allow <tools>` | Starts Model Context Protocol stdio server for LLM integration. |
+| `dxcli mcp` | `--allow <path>` | Starts read-only Model Context Protocol stdio server for AI agents. Repeat `--allow` to permit more directories. |
 | `dxcli dash` | *(none)* | Opens full-screen interactive Textual Terminal User Interface (TUI). |
 | `dxcli demo` | *(none)* | Seeds realistic synthetic snapshots for sandbox testing. |
 
