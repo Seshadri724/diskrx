@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "diskrx"
-version = "0.3.0"
+version = "0.3.1"
 description = "The disk doctor for your CI pipeline and dev box — diagnose what filled the drive, which process did it, and fail fast in CI"
 authors = [
     {name = "Seshadri Naidu Vangapandu", email = "seshuvangapandu@gmail.com"}
