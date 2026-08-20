@@ -4,7 +4,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/diskrx.svg)](https://pypi.org/project/diskrx/)
 [![Tests](https://github.com/Seshadri724/diskrx/actions/workflows/test.yml/badge.svg)](https://github.com/Seshadri724/diskrx/actions/workflows/test.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 > *"No space left on device at minute 45 of a 50-minute CI build isn't a disk problem — it's a diagnosis problem."*
 
@@ -222,4 +222,6 @@ pytest
 
 ## 📄 License
 
-Distributed under the [MIT License](https://github.com/Seshadri724/diskrx/blob/master/LICENSE).
+Distributed under the [Apache License 2.0](https://github.com/Seshadri724/diskrx/blob/master/LICENSE).
+
+Note: version 0.3.0 and earlier were released under the MIT License. Those releases remain MIT; version 0.3.1 onward is Apache 2.0.
