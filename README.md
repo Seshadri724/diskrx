@@ -224,4 +224,4 @@ pytest
 
 Distributed under the [Apache License 2.0](https://github.com/Seshadri724/diskrx/blob/master/LICENSE).
 
-Note: version 0.3.0 and earlier were released under the MIT License. Those releases remain MIT; version 0.3.1 onward is Apache 2.0.
+Note: versions 0.3.1 and earlier were published under the MIT License and remain MIT. Version 0.3.2 onward is Apache 2.0.
