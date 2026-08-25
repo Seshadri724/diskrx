@@ -1,8 +1,11 @@
 # dxcli — The Disk Doctor for Your CI Pipeline, Dev Box, and Servers
 
+> **Install name vs. command name:** the package installs from PyPI as **`diskrx`** (`pip install diskrx`), and provides the **`dxcli`** command.
+
 `dxcli` keeps GitHub Actions runners, dev containers, Docker builds, and server fleets from crashing due to disk exhaustion. It diagnoses **what** filled the drive, **which process** did it, forecasts time-to-full, and gives you actionable, reversible fixes.
 
 [![PyPI](https://img.shields.io/pypi/v/diskrx.svg)](https://pypi.org/project/diskrx/)
+[![Python Versions](https://img.shields.io/pypi/pyversions/diskrx.svg)](https://pypi.org/project/diskrx/)
 [![Tests](https://github.com/Seshadri724/diskrx/actions/workflows/test.yml/badge.svg)](https://github.com/Seshadri724/diskrx/actions/workflows/test.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
@@ -35,8 +38,6 @@ Tools like `du` and `ncdu` show you where bytes live. `dxcli` tells you **what c
 ---
 
 ## 🚀 Quick Start
-
-> **Install name vs. command name:** the package installs from PyPI as **`diskrx`**, and provides the **`dxcli`** command.
 
 ```bash
 # Install via pip
