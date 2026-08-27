@@ -34,15 +34,25 @@ logger = logging.getLogger(__name__)
 
 
 def is_path_allowed(path: str, allow_paths: Optional[List[str]] = None) -> bool:
-    """Ensure target path falls within allowed directory boundaries."""
+    """Ensure a path resolves inside one of the allowed directory boundaries.
+
+    ``realpath`` is intentional here: a lexical prefix check can be bypassed
+    with a symlink inside an allowed directory that points outside it.
+    ``commonpath`` avoids treating similarly named siblings such as
+    ``/srv/app`` and ``/srv/application`` as the same tree.
+    """
     if not allow_paths:
         allow_paths = [os.getcwd(), os.path.expanduser("~")]
 
-    abs_target = os.path.abspath(path).lower()
+    target = os.path.normcase(os.path.realpath(os.path.abspath(path)))
     for allowed in allow_paths:
-        abs_allowed = os.path.abspath(allowed).lower()
-        if abs_target == abs_allowed or abs_target.startswith(abs_allowed + os.sep):
-            return True
+        allowed_root = os.path.normcase(os.path.realpath(os.path.abspath(allowed)))
+        try:
+            if os.path.commonpath([target, allowed_root]) == allowed_root:
+                return True
+        except ValueError:
+            # Windows paths on different drives cannot have a common path.
+            continue
     return False
 
 
@@ -200,6 +210,19 @@ class McpServer:
                 return {
                     "content": [
                         {"type": "text", "text": "baseline_file parameter required"}
+                    ],
+                    "isError": True,
+                }
+            if not is_path_allowed(baseline_file, self.allow_paths):
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": (
+                                f"Access denied: baseline file '{baseline_file}' "
+                                "is outside allowed directories."
+                            ),
+                        }
                     ],
                     "isError": True,
                 }

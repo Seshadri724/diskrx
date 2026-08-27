@@ -2,6 +2,8 @@ import io
 import json
 import sys
 
+import pytest
+
 from dxcli.mcp import McpServer, is_path_allowed
 
 
@@ -28,6 +30,37 @@ def test_mcp_path_allowlist(tmp_path):
     res = server.handle_tool_call("disk_status", {"path": str(restricted_dir)})
     assert res["isError"] is True
     assert "Access denied" in res["content"][0]["text"]
+
+
+def test_mcp_path_allowlist_rejects_symlink_escape(tmp_path):
+    allowed_dir = tmp_path / "allowed"
+    allowed_dir.mkdir()
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    link = allowed_dir / "outside-link"
+    try:
+        link.symlink_to(outside_dir, target_is_directory=True)
+    except OSError:
+        pytest.skip("Symlinks not supported in this environment")
+
+    assert is_path_allowed(str(link), [str(allowed_dir)]) is False
+
+
+def test_mcp_diff_rejects_baseline_outside_allowlist(tmp_path):
+    allowed_dir = tmp_path / "allowed"
+    allowed_dir.mkdir()
+    outside_baseline = tmp_path / "outside-baseline.json"
+    outside_baseline.write_text("{}", encoding="utf-8")
+
+    server = McpServer(allow_paths=[str(allowed_dir)])
+    res = server.handle_tool_call(
+        "diff",
+        {"path": str(allowed_dir), "baseline_file": str(outside_baseline)},
+    )
+
+    assert res["isError"] is True
+    assert "baseline file" in res["content"][0]["text"]
+    assert "outside allowed directories" in res["content"][0]["text"]
 
 
 def test_mcp_disk_status_tool(tmp_path):
