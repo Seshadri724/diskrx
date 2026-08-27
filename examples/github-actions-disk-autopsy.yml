@@ -1,0 +1,43 @@
+name: Build & CI Disk Autopsy Guard
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dxcli
+        run: pip install diskrx
+
+      - name: Pre-Build Disk Guard & Baseline Snapshot
+        run: |
+          # 1. Fail immediately if runner is already > 90% full before build starts
+          dxcli ci --threshold 90
+          # 2. Record storage baseline including Docker layer states
+          dxcli snapshot-baseline . --output .dxcli-baseline.json --docker
+
+      - name: Execute Heavy Build / Docker Test Matrix
+        run: |
+          echo "Building Docker images, running integration tests, compiling assets..."
+          # Example build commands:
+          # docker build -t myapp:test .
+          # pytest tests/integration/
+
+      - name: Post-Build Disk Autopsy (Always Runs)
+        if: always()
+        run: |
+          # Compare post-build storage vs pre-build baseline
+          # Renders markdown report to stdout and automatically populates $GITHUB_STEP_SUMMARY
+          dxcli autopsy . --baseline .dxcli-baseline.json --docker --fail-on-growth 15GB

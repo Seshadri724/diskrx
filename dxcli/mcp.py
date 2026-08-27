@@ -167,7 +167,12 @@ class McpServer:
             }
 
         if name == "disk_status":
-            snap = run_diagnosis(path, include_docker=False, include_processes=False)
+            snap = run_diagnosis(
+                path,
+                include_docker=False,
+                include_processes=False,
+                persist_snapshot=False,
+            )
             if not snap.partition:
                 return {
                     "content": [
@@ -189,7 +194,11 @@ class McpServer:
 
         elif name == "diagnose":
             include_docker = arguments.get("docker", True)
-            snap = run_diagnosis(path, include_docker=include_docker)
+            snap = run_diagnosis(
+                path,
+                include_docker=include_docker,
+                persist_snapshot=False,
+            )
             out = {
                 "path": snap.path,
                 "partition": asdict(snap.partition) if snap.partition else None,
@@ -250,7 +259,10 @@ class McpServer:
             try:
                 predictor = DiskPredictor(db)
                 snap = run_diagnosis(
-                    path, include_docker=False, include_processes=False
+                    path,
+                    include_docker=False,
+                    include_processes=False,
+                    persist_snapshot=False,
                 )
                 if not snap.partition:
                     return {

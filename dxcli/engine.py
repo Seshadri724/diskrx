@@ -41,6 +41,7 @@ def run_diagnosis(
     db=None,
     policy_engine=None,
     provider=None,
+    persist_snapshot: bool = True,
 ) -> DiagnosticSnapshot:
     """Run a full diagnostic pass and return a unified snapshot."""
     from .analyzers import (
@@ -164,7 +165,7 @@ def run_diagnosis(
     if db is not None:
         try:
             # record snapshot
-            if partition:
+            if persist_snapshot and partition:
                 try:
                     db.record_snapshot(partition, top_dirs)
                 except Exception as exc:

@@ -128,3 +128,41 @@ def test_mcp_malformed_json_returns_parse_error(tmp_path, monkeypatch):
     resp = json.loads(out.getvalue())
     assert resp["error"]["code"] == -32700
     assert resp["id"] is None
+
+
+def test_mcp_tools_do_not_persist_db_snapshots(tmp_path, monkeypatch):
+    """MCP calls must be read-only and never write snapshots to the database."""
+    from dxcli.store.database import Database
+
+    db_file = tmp_path / "history.db"
+    monkeypatch.setenv("DXCLI_HOME", str(tmp_path))
+
+    db = Database(str(db_file))
+    cur = db._conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM snapshots")
+    initial_count = cur.fetchone()[0]
+
+    server = McpServer(allow_paths=[str(tmp_path)])
+
+    # 1. disk_status
+    res = server.handle_tool_call("disk_status", {"path": str(tmp_path)})
+    assert res["isError"] is False
+
+    # 2. diagnose
+    res = server.handle_tool_call("diagnose", {"path": str(tmp_path), "docker": False})
+    assert res["isError"] is False
+
+    # 3. predict
+    res = server.handle_tool_call("predict", {"path": str(tmp_path)})
+    assert res["isError"] is False
+
+    # 4. clean_preview
+    res = server.handle_tool_call(
+        "clean_preview", {"path": str(tmp_path), "docker": False}
+    )
+    assert res["isError"] is False
+
+    cur.execute("SELECT COUNT(*) FROM snapshots")
+    after_count = cur.fetchone()[0]
+    assert after_count == initial_count
+    db.close()

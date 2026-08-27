@@ -1,0 +1,39 @@
+{
+  "timestamp": 1772184000.0,
+  "path": "/home/runner/work/backend/backend",
+  "partition": {
+    "mountpoint": "/",
+    "total_bytes": 80530636800,
+    "used_bytes": 26843545600,
+    "free_bytes": 53687091200,
+    "usage_percent": 33.3
+  },
+  "top_dirs": [
+    {
+      "path": "/home/runner/work/backend/backend/.git",
+      "size_bytes": 104857600,
+      "file_count": 850
+    },
+    {
+      "path": "/home/runner/work/backend/backend/src",
+      "size_bytes": 52428800,
+      "file_count": 320
+    },
+    {
+      "path": "/home/runner/.cache/pip",
+      "size_bytes": 209715200,
+      "file_count": 45
+    },
+    {
+      "path": "/var/lib/docker/overlay2",
+      "size_bytes": 2147483648,
+      "file_count": 1200
+    }
+  ],
+  "docker": {
+    "images_size_bytes": 1073741824,
+    "build_cache_size_bytes": 536870912,
+    "containers_size_bytes": 104857600,
+    "volumes_size_bytes": 0
+  }
+}
