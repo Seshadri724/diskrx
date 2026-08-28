@@ -149,7 +149,8 @@ def run_diagnosis(
         from .store.database import Database
 
         try:
-            db = Database()
+            # Read-only consumers must not create or initialize ~/.dx/history.db.
+            db = Database(":memory:") if not persist_snapshot else Database()
         except Exception as exc:
             collector_errors.append(
                 CollectorError(collector="database", message=str(exc))

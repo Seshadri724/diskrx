@@ -141,6 +141,10 @@ def test_mcp_tools_do_not_persist_db_snapshots(tmp_path, monkeypatch):
     cur = db._conn.cursor()
     cur.execute("SELECT COUNT(*) FROM snapshots")
     initial_count = cur.fetchone()[0]
+    initial_files = {
+        item.name: (item.stat().st_size, item.stat().st_mtime_ns)
+        for item in tmp_path.iterdir()
+    }
 
     server = McpServer(allow_paths=[str(tmp_path)])
 
@@ -165,4 +169,36 @@ def test_mcp_tools_do_not_persist_db_snapshots(tmp_path, monkeypatch):
     cur.execute("SELECT COUNT(*) FROM snapshots")
     after_count = cur.fetchone()[0]
     assert after_count == initial_count
+    after_files = {
+        item.name: (item.stat().st_size, item.stat().st_mtime_ns)
+        for item in tmp_path.iterdir()
+    }
+    assert after_files == initial_files
     db.close()
+
+
+def test_mcp_predict_without_history_does_not_create_state(tmp_path, monkeypatch):
+    """Missing history must not be created as a side effect of MCP prediction."""
+    state_dir = tmp_path / "state"
+    monkeypatch.setenv("DXCLI_HOME", str(state_dir))
+
+    server = McpServer(allow_paths=[str(tmp_path)])
+    result = server.handle_tool_call("predict", {"path": str(tmp_path)})
+
+    assert result["isError"] is False
+    assert "Prediction unavailable" in result["content"][0]["text"]
+    assert not state_dir.exists()
+
+
+def test_read_only_database_rejects_writes(tmp_path):
+    """Read-only prediction access must not be able to mutate history."""
+    from dxcli.store.database import Database, DatabaseError
+
+    db_file = tmp_path / "history.db"
+    writable = Database(str(db_file))
+    writable.close()
+
+    readonly = Database(str(db_file), read_only=True)
+    with pytest.raises(DatabaseError, match="read-only"):
+        readonly.prune_old()
+    readonly.close()

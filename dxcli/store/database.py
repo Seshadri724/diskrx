@@ -3,6 +3,7 @@ import os
 import time
 import logging
 from typing import List, Dict, Optional
+from urllib.parse import quote
 
 from ..store.models import Partition, DirNode
 
@@ -14,28 +15,42 @@ class DatabaseError(Exception):
 
 
 class Database:
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: Optional[str] = None, read_only: bool = False):
+        self.read_only = read_only
         if db_path is None:
             from ..state import get_state_dir  # BUG-3 FIX: was `.state` (wrong level)
 
-            db_path = os.path.join(get_state_dir(), "history.db")
+            db_path = os.path.join(get_state_dir(create=not read_only), "history.db")
 
         self.db_path = db_path
         self._conn: Optional[sqlite3.Connection] = None
-        # Use a timeout to handle concurrent access gracefully
-        self._conn = sqlite3.connect(self.db_path, timeout=10.0)
+        if read_only:
+            if not os.path.isfile(self.db_path):
+                raise DatabaseError("History database does not exist.")
+            # SQLite's URI mode=ro prevents creation, journaling, and writes.
+            uri_path = quote(
+                os.path.abspath(self.db_path).replace("\\", "/"), safe="/:"
+            )
+            self._conn = sqlite3.connect(
+                f"file:{uri_path}?mode=ro", uri=True, timeout=10.0
+            )
+        else:
+            # Use a timeout to handle concurrent access gracefully
+            self._conn = sqlite3.connect(self.db_path, timeout=10.0)
         self._configure_connection()
-        self._init_db()
+        if not read_only:
+            self._init_db()
 
     def _configure_connection(self) -> None:
         """Apply production-safe SQLite pragmas."""
         cur = self._conn.cursor()
-        cur.execute("PRAGMA journal_mode=WAL")
-        cur.execute("PRAGMA synchronous=NORMAL")
+        if not self.read_only:
+            cur.execute("PRAGMA journal_mode=WAL")
+            cur.execute("PRAGMA synchronous=NORMAL")
         cur.execute("PRAGMA busy_timeout=5000")
 
         # Restrict permissions on the database file (Unix only)
-        if os.name != "nt" and os.path.exists(self.db_path):
+        if not self.read_only and os.name != "nt" and os.path.exists(self.db_path):
             try:
                 os.chmod(self.db_path, 0o600)
             except OSError:
@@ -78,6 +93,9 @@ class Database:
         Raises DatabaseError if the write fails so callers know the snapshot
         was not recorded, rather than silently continuing.
         """
+        if self.read_only:
+            raise DatabaseError("Cannot write to a read-only database.")
+
         timestamp = time.time()
         cur = self._conn.cursor()
         try:
@@ -185,6 +203,9 @@ class Database:
 
     def prune_old(self, days: int = 90) -> None:
         """Delete snapshots and directory metrics older than the specified days, then vacuum."""
+        if self.read_only:
+            raise DatabaseError("Cannot write to a read-only database.")
+
         cutoff = time.time() - (days * 86400)
         cur = self._conn.cursor()
         try:

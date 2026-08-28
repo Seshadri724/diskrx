@@ -30,10 +30,8 @@ jobs:
 
       - name: Execute Heavy Build / Docker Test Matrix
         run: |
-          echo "Building Docker images, running integration tests, compiling assets..."
-          # Example build commands:
-          # docker build -t myapp:test .
-          # pytest tests/integration/
+          docker build -t myapp:test -f demo/Dockerfile.test demo/
+          echo "Build completed; add your integration tests here."
 
       - name: Post-Build Disk Autopsy (Always Runs)
         if: always()

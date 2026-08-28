@@ -2,15 +2,24 @@ import os
 import tempfile
 
 
-def get_state_dir() -> str:
-    """Returns the centralized, secure state directory for dxcli."""
-    home = os.path.expanduser("~")
-    dx_dir = os.path.join(home, ".dx")
+def get_state_dir(create: bool = True) -> str:
+    """Return dxcli's centralized state directory.
+
+    ``DXCLI_HOME`` is primarily useful for isolated tests and sandboxes. When
+    it is not set, state remains under ``~/.dx`` for backwards compatibility.
+    Read-only callers can pass ``create=False`` to avoid creating the state
+    directory as a side effect.
+    """
+    configured_home = os.environ.get("DXCLI_HOME")
+    if configured_home:
+        dx_dir = os.path.abspath(configured_home)
+    else:
+        dx_dir = os.path.join(os.path.expanduser("~"), ".dx")
 
     # Secure defaults: 0700 for state directory
-    if not os.path.exists(dx_dir):
+    if create and not os.path.exists(dx_dir):
         os.makedirs(dx_dir, mode=0o700, exist_ok=True)
-    elif os.name != "nt":
+    elif create and os.name != "nt":
         try:
             os.chmod(dx_dir, 0o700)
         except OSError:

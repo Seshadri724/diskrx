@@ -20,7 +20,7 @@ dxcli snapshot-baseline . --output .dxcli-baseline.json --docker
 Simulate a runaway Docker BuildKit build or large cache generation:
 
 ```bash
-# Example: multi-stage build caching 14.8 GB of intermediate layers
+# Example: build a reproducible Docker workload
 docker build -t myapp:integration -f Dockerfile.test .
 ```
 
@@ -40,6 +40,8 @@ dxcli autopsy . --baseline .dxcli-baseline.json --docker --fail-on-growth 15GB
 
 ```markdown
 🔍 dxcli CI Storage Autopsy Report
+
+> The values below are illustrative sample output, not production accuracy measurements.
 
 Probable Cause: Docker BuildKit cache layer accumulation (+14.80 GB)
 Total Build Growth: +16.42 GB (Runner reached 94% capacity)

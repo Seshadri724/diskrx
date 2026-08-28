@@ -1,6 +1,6 @@
-"""test_accuracy_benchmark.py — Empirical Accuracy & Performance Benchmark Suite
+"""test_accuracy_benchmark.py — Synthetic regression benchmark suite
 
-Tests dxcli diagnostic, autopsy, and prediction accuracy across 9 real-world scenarios:
+Tests dxcli diagnostic and autopsy behavior across 9 deterministic filesystem scenarios:
 1. Docker cache growth
 2. node_modules growth
 3. Python virtual environment growth
@@ -11,13 +11,7 @@ Tests dxcli diagnostic, autopsy, and prediction accuracy across 9 real-world sce
 8. Insufficient history
 9. Permission failures
 
-Computes and asserts:
-- Top-culprit identification accuracy
-- Growth-estimate percentage error
-- Reclaim-estimate percentage error
-- Scan duration
-- Prediction Mean Absolute Error (MAE)
-- False-positive rate
+These tests are regression checks, not a representative real-world accuracy study.
 """
 
 import os
@@ -41,7 +35,7 @@ def _create_dummy_file(path: Path, size_bytes: int):
 
 
 class TestAccuracyAndBenchmarks:
-    """Benchmark tests validating empirical accuracy numbers."""
+    """Deterministic tests for representative filesystem growth scenarios."""
 
     @pytest.fixture(autouse=True)
     def setup_benchmarks(self, tmp_path):

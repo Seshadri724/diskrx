@@ -37,18 +37,25 @@ Tools like `du` and `ncdu` show you where bytes live. `dxcli` tells you **what c
 
 ---
 
-## 📊 Measured Accuracy & Performance
+## 📊 Benchmark Status
 
-Empirically validated across 9 CI/CD and Docker workloads (`tests/test_accuracy_benchmark.py`):
+The repository contains nine deterministic synthetic regression scenarios in
+`tests/test_accuracy_benchmark.py`. They validate behavior for Docker-shaped
+cache growth, dependency trees, virtual environments, logs, build artifacts,
+mixed growth, rotation, sparse history, and permission handling.
 
-| Metric | Measured Result | Benchmark Workload |
-|---|---|---|
-| **Top-Culprit Accuracy** | **98.7%** | Docker BuildKit, `node_modules`, pip venvs, log spikes |
-| **Growth-Estimate Error** | **< 1.2%** | True FS byte allocation vs. computed delta |
-| **Reclaim-Estimate Error** | **< 3.4%** | Reclaimable Docker layers & package caches |
-| **Scan Overhead** | **< 1.8 s** | Parallel BFS 64-thread worker pool on standard trees |
-| **Prediction MAE** | **±0.8 days** | Steady-state linear regression ($R^2 > 0.85$) |
-| **False-Positive Rate** | **0.0%** | Zero unverified purges; realpath-contained boundaries |
+These tests are not a representative production accuracy study. Real-world
+culprit accuracy, prediction MAE, reclaim-estimate error, and production scan
+latency are not yet measured and should not be inferred from the synthetic
+suite.
+
+| Measurement | Current status |
+|---|---|
+| Synthetic regression scenarios | 9 passing locally |
+| Real-world culprit accuracy | Not yet measured |
+| Prediction MAE | Not yet measured |
+| Reclaim-estimate error | Not yet measured |
+| Production scan latency | Not yet measured |
 
 ---
 

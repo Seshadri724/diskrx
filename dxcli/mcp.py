@@ -28,7 +28,7 @@ from .autopsy import run_autopsy
 from .clean_engine import CleanEngine
 from .engine import run_diagnosis
 from .outputs.cli_report import format_bytes
-from .store.database import Database
+from .store.database import Database, DatabaseError
 
 logger = logging.getLogger(__name__)
 
@@ -255,7 +255,18 @@ class McpServer:
                 }
 
         elif name == "predict":
-            db = Database()
+            try:
+                db = Database(read_only=True)
+            except DatabaseError:
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Prediction unavailable: no readable history database.",
+                        }
+                    ],
+                    "isError": False,
+                }
             try:
                 predictor = DiskPredictor(db)
                 snap = run_diagnosis(
@@ -385,3 +396,7 @@ class McpServer:
                 }
                 sys.stdout.write(json.dumps(resp) + "\n")
                 sys.stdout.flush()
+
+
+if __name__ == "__main__":
+    McpServer().run_stdio()

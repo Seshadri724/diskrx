@@ -1,0 +1,7 @@
+FROM alpine:3.20
+
+RUN mkdir -p /workspace/build-output \
+    && printf 'dxcli reproducible CI demo\n' > /workspace/build-output/artifact.txt
+
+WORKDIR /workspace
+CMD ["sh", "-c", "du -sh /workspace"]
