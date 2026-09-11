@@ -265,7 +265,7 @@ dxcli snapshot . --push https://fleet.internal/api/v1/snapshot --token $FLEET_TO
 | `dxcli diagnose [PATH]` | `--ci`, `--docker`, `--classify`, `--report <file.html>`, `--json`, `--threads <N>`, `--nice <N>` | Comprehensive disk scan, process mapping, and rule validation. |
 | `dxcli ci [PATH]` | `--no-docker`, `--json` | Fast-fail pre-build guard (alias for `diagnose --ci --docker`). Exits `1` on critical state. |
 | `dxcli snapshot-baseline [PATH]`| `--baseline <file.json>`, `--no-docker` | Captures baseline snapshot before CI build steps. |
-| `dxcli autopsy [PATH]` | `--baseline <file.json>`, `--format <text\|json\|markdown>`, `--summary`, `--pr-comment` | Diffs post-build usage against baseline and identifies growth culprits. |
+| `dxcli autopsy [PATH]` | `--baseline <file.json>`, `--format <text\|json\|markdown>`, `--summary`, `--pr-comment`, `--compare`, `--write-report`, `--fail-on-growth` | Diffs post-build usage against baseline; optional vs-main compare and growth budget. |
 | `dxcli clean [PATH]` | `--dry-run`, `--yes/-y`, `--no-docker`, `--json` | Interactive/automated cleaner for stale caches, tmp files, and dangling docker layers. |
 | `dxcli heal [PATH]` | `--dry-run`, `--yes/-y` | Applies safe, scoped remediation rules. |
 | `dxcli undo` | *(none)* | Reverts the most recent `heal` action using recorded state logs. |

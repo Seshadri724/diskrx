@@ -84,8 +84,8 @@ dxcli dash
 
 ### 1. Two-Phase CI/CD Guard & Autopsy
 - **Phase 1 (Pre-Build Guard)**: Fail fast in < 2 seconds if a runner is already starved of disk (`dxcli ci`).
-- **Phase 2 (Post-Build Autopsy)**: Compare against a pre-build baseline (`dxcli snapshot-baseline`) to pinpoint exact directories or Docker layers that grew during the build (`dxcli autopsy`).
-- **Rich CI Integration**: Automatically renders markdown summaries into `$GITHUB_STEP_SUMMARY` and posts PR comments.
+- **Phase 2 (Post-Build Autopsy)**: Compare against a pre-build baseline (`dxcli snapshot-baseline`) to pinpoint exact directories or Docker layers that grew during the build (`dxcli autopsy`). On PRs, compare that growth to the last green default-branch job.
+- **Rich CI Integration**: Job summary, sticky PR comment, growth JSON artifact, optional `--fail-on-growth` budget.
 
 ### 2. Docker Storage & BuildKit Diagnosis
 - Correlates Docker internal objects (images, containers, anonymous volumes, BuildKit cache) with system disk metrics.
@@ -123,10 +123,10 @@ dxcli dash
 
 ## 🐙 GitHub Action Usage
 
-Drop the official composite action into your `.github/workflows/`:
+Two steps around your build. On pull requests the finish step updates a single PR comment and compares growth to the last `diskrx-growth` artifact from the default branch.
 
 ```yaml
-name: Build with Disk Guard & Autopsy
+name: Build with disk autopsy
 
 on: [push, pull_request]
 
@@ -135,36 +135,28 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write # For automated PR comments
+      actions: read          # download last main growth report
+      pull-requests: write   # sticky PR comment
 
     steps:
       - uses: actions/checkout@v4
 
-      # 1. Pre-build check & baseline snapshot
-      - name: Disk Baseline
+      - name: Disk baseline
         uses: Seshadri724/diskrx@v1
         with:
-          mode: "snapshot-baseline"
-          baseline-file: "baseline.json"
-          docker: "true"
+          mode: start
 
-      # 2. Main Build Step
-      - name: Run Build
+      - name: Build
         run: |
           docker build -t my-app:latest .
           npm test
 
-      # 3. Post-build growth autopsy (runs even on failure)
-      - name: Disk Growth Autopsy
+      - name: Disk autopsy
         if: always()
         uses: Seshadri724/diskrx@v1
         with:
-          mode: "autopsy"
-          baseline-file: "baseline.json"
-          summary: "true"
-          pr-comment: "true"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          mode: finish
+          # fail-on-growth: "2G"   # optional budget
 ```
 
 ---
@@ -177,7 +169,7 @@ jobs:
 | `dxcli diagnose [PATH] --docker` | Comprehensive diagnostic scan including Docker container & cache analysis. |
 | `dxcli ci [PATH]` | CI fast-fail guard. Exits `1` on critical disk pressure or policy breach. |
 | `dxcli snapshot-baseline [PATH]` | Records baseline snapshot for CI differential growth tracking. |
-| `dxcli autopsy [PATH]` | Diffs usage against baseline and identifies growth culprits. |
+| `dxcli autopsy [PATH]` | Diffs vs baseline; optional `--compare` (vs main), `--write-report`, `--fail-on-growth`. |
 | `dxcli clean [PATH] --dry-run` | Previews safe, automated cleanup actions. |
 | `dxcli heal [PATH] -y` | Applies policy-based remediation actions. |
 | `dxcli undo` | Rolls back the last applied `heal` remediation. |

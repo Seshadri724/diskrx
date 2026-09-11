@@ -59,6 +59,17 @@ class AutopsyReport:
     collector_errors: List[CollectorError]
 
 
+@dataclass
+class GrowthComparison:
+    """This job's growth vs a previous job (typically last green default branch)."""
+
+    previous_total_bytes: int
+    current_total_bytes: int
+    extra_bytes: int
+    previous_probable_cause: str
+    previous_ref: str
+
+
 def save_baseline(
     path: str, baseline_file: str, include_docker: bool = True
 ) -> BaselineSnapshot:
@@ -175,15 +186,164 @@ def run_autopsy(baseline_file: str, path: str = ".") -> AutopsyReport:
     )
 
 
-def render_markdown(report: AutopsyReport) -> str:
+def autopsy_report_to_dict(report: AutopsyReport) -> Dict[str, Any]:
+    return {
+        "schema": report.schema,
+        "created_at": report.created_at,
+        "path": report.path,
+        "baseline_file": report.baseline_file,
+        "total_growth_bytes": report.total_growth_bytes,
+        "probable_cause": report.probable_cause,
+        "grown_dirs": [asdict(g) for g in report.grown_dirs],
+        "shrunk_dirs": [asdict(s) for s in report.shrunk_dirs],
+        "docker_growth": report.docker_growth,
+        "prescriptions": [asdict(p) for p in report.prescriptions],
+        "collector_errors": [asdict(e) for e in report.collector_errors],
+        "ref": os.environ.get("GITHUB_REF_NAME") or os.environ.get("GITHUB_REF"),
+        "sha": os.environ.get("GITHUB_SHA"),
+    }
+
+
+def write_growth_report(report: AutopsyReport, path: str) -> None:
+    atomic_write_text(path, json.dumps(autopsy_report_to_dict(report), indent=2))
+
+
+def load_growth_report(path: str) -> Dict[str, Any]:
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise ValueError("Growth report must be a JSON object.")
+    return data
+
+
+def compare_with_previous(
+    report: AutopsyReport, previous: Dict[str, Any]
+) -> GrowthComparison:
+    prev_total = int(previous.get("total_growth_bytes") or 0)
+    prev_ref = previous.get("ref") or previous.get("sha") or "previous job"
+    return GrowthComparison(
+        previous_total_bytes=prev_total,
+        current_total_bytes=report.total_growth_bytes,
+        extra_bytes=report.total_growth_bytes - prev_total,
+        previous_probable_cause=str(previous.get("probable_cause") or ""),
+        previous_ref=str(prev_ref),
+    )
+
+
+def _default_branch_from_event() -> str:
+    event_path = os.environ.get("GITHUB_EVENT_PATH")
+    if event_path and os.path.exists(event_path):
+        try:
+            with open(event_path, "r", encoding="utf-8") as f:
+                event = json.load(f)
+            branch = (event.get("repository") or {}).get("default_branch")
+            if branch:
+                return str(branch)
+        except Exception as e:
+            logger.debug("Could not read default branch from event: %s", e)
+    return os.environ.get("GITHUB_DEFAULT_BRANCH") or "main"
+
+
+def download_default_branch_growth_report(
+    dest_path: str, artifact_name: str = "diskrx-growth"
+) -> bool:
+    """Download the latest non-expired growth artifact from the repo default branch.
+
+    No-ops outside GitHub Actions or when no matching artifact exists.
+    """
+    import urllib.error
+    import urllib.request
+    import zipfile
+    from io import BytesIO
+
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    if not token or not repo:
+        return False
+
+    default_branch = _default_branch_from_event()
+    api = (
+        f"https://api.github.com/repos/{repo}/actions/artifacts"
+        f"?name={artifact_name}&per_page=30"
+    )
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "dxcli-autopsy",
+    }
+    try:
+        req = urllib.request.Request(api, headers=headers, method="GET")
+        with urllib.request.urlopen(req, timeout=15) as resp:  # nosec B310
+            payload = json.loads(resp.read().decode("utf-8"))
+        artifacts = payload.get("artifacts") or []
+        match = None
+        for art in artifacts:
+            if art.get("expired"):
+                continue
+            run = art.get("workflow_run") or {}
+            if run.get("head_branch") == default_branch:
+                match = art
+                break
+        if not match:
+            logger.info(
+                "No %s artifact found on branch %s.", artifact_name, default_branch
+            )
+            return False
+
+        zip_url = (
+            f"https://api.github.com/repos/{repo}/actions/artifacts/"
+            f"{match['id']}/zip"
+        )
+        zip_req = urllib.request.Request(zip_url, headers=headers, method="GET")
+        with urllib.request.urlopen(zip_req, timeout=30) as resp:  # nosec B310
+            blob = resp.read()
+        with zipfile.ZipFile(BytesIO(blob)) as zf:
+            names = [n for n in zf.namelist() if n.endswith(".json")]
+            if not names:
+                return False
+            atomic_write_text(dest_path, zf.read(names[0]).decode("utf-8"))
+        return os.path.exists(dest_path)
+    except (
+        urllib.error.URLError,
+        OSError,
+        json.JSONDecodeError,
+        KeyError,
+        zipfile.BadZipFile,
+    ) as e:
+        logger.warning("Could not download default-branch growth report: %s", e)
+        return False
+
+
+def render_markdown(
+    report: AutopsyReport, comparison: Optional[GrowthComparison] = None
+) -> str:
     """Render AutopsyReport as GitHub-flavored Markdown for PR comments or Step Summary."""
     lines = []
     lines.append("<!-- dxcli-autopsy -->")
-    lines.append("## 🔍 dxcli CI Storage Autopsy Report")
+    lines.append("## 🔍 Disk growth autopsy")
     lines.append("")
-    lines.append(f"**Probable Cause:** {report.probable_cause}")
-    lines.append(f"**Total Build Growth:** `{format_bytes(report.total_growth_bytes)}`")
+    lines.append(f"**Probable cause:** {report.probable_cause}")
+    lines.append(f"**This job grew:** `{format_bytes(report.total_growth_bytes)}`")
     lines.append("")
+    if comparison:
+        extra = comparison.extra_bytes
+        vs = comparison.previous_ref
+        if extra > 0:
+            verdict = (
+                f"This job is **{format_bytes(extra)} fatter** than `{vs}` "
+                f"(`{format_bytes(comparison.previous_total_bytes)}` on that run)."
+            )
+        elif extra < 0:
+            verdict = (
+                f"This job is **{format_bytes(-extra)} leaner** than `{vs}` "
+                f"(`{format_bytes(comparison.previous_total_bytes)}` on that run)."
+            )
+        else:
+            verdict = f"Same growth as `{vs}`."
+        lines.append(f"**vs `{vs}`:** {verdict}")
+        if comparison.previous_probable_cause:
+            lines.append(f"*Previous cause:* {comparison.previous_probable_cause}")
+        lines.append("")
 
     if report.grown_dirs:
         lines.append("### 📈 Top Storage Consumers (Growth During Build)")

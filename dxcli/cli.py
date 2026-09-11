@@ -987,14 +987,35 @@ def snapshot_baseline(baseline, no_docker, path):
     is_flag=True,
     help="Post or update single GitHub PR comment.",
 )
+@click.option(
+    "--compare",
+    default=None,
+    help="JSON growth report from a previous job (e.g. last green main).",
+)
+@click.option(
+    "--write-report",
+    default=None,
+    help="Write this job's growth report JSON (upload as a CI artifact).",
+)
+@click.option(
+    "--fail-on-growth",
+    default=None,
+    help="Exit 4 if this job grew by at least this much (e.g. 2G, 500M).",
+)
 @click.argument("path", default=".")
-def autopsy(baseline, fmt, summary, pr_comment, path):
+def autopsy(
+    baseline, fmt, summary, pr_comment, compare, write_report, fail_on_growth, path
+):
     """Analyze what grew during a build by comparing against a pre-build baseline."""
     from .autopsy import (
+        autopsy_report_to_dict,
+        compare_with_previous,
+        load_growth_report,
         post_github_pr_comment,
         render_markdown,
         run_autopsy,
         write_github_summary,
+        write_growth_report,
     )
 
     path = os.path.abspath(path)
@@ -1003,44 +1024,57 @@ def autopsy(baseline, fmt, summary, pr_comment, path):
     except Exception as exc:
         fail(f"Autopsy analysis failed: {exc}", ExitCode.RUNTIME_ERROR)
 
+    comparison = None
+    if compare:
+        try:
+            comparison = compare_with_previous(report, load_growth_report(compare))
+        except Exception as exc:
+            console.print(
+                f"[yellow]Warning: could not load --compare file: {exc}[/yellow]"
+            )
+
+    if write_report:
+        try:
+            write_growth_report(report, write_report)
+        except Exception as exc:
+            fail(f"Failed to write growth report: {exc}", ExitCode.RUNTIME_ERROR)
+
     if fmt == "json":
-        output_dict = {
-            "schema": report.schema,
-            "created_at": report.created_at,
-            "path": report.path,
-            "baseline_file": report.baseline_file,
-            "total_growth_bytes": report.total_growth_bytes,
-            "probable_cause": report.probable_cause,
-            "grown_dirs": [asdict(g) for g in report.grown_dirs],
-            "shrunk_dirs": [asdict(s) for s in report.shrunk_dirs],
-            "docker_growth": report.docker_growth,
-            "prescriptions": [asdict(p) for p in report.prescriptions],
-            "collector_errors": [asdict(e) for e in report.collector_errors],
-        }
+        output_dict = autopsy_report_to_dict(report)
+        if comparison:
+            output_dict["vs_previous"] = asdict(comparison)
         print(json.dumps(output_dict, indent=2))
-        return
+    else:
+        markdown = render_markdown(report, comparison)
+        console.print(markdown)
 
-    markdown = render_markdown(report)
-    console.print(markdown)
+        if summary:
+            wrote = write_github_summary(markdown)
+            if wrote:
+                console.print("[dim]Summary appended to $GITHUB_STEP_SUMMARY[/dim]")
+            else:
+                console.print(
+                    "[yellow]Warning: $GITHUB_STEP_SUMMARY environment variable not set.[/yellow]"
+                )
 
-    if summary:
-        wrote = write_github_summary(markdown)
-        if wrote:
-            console.print("[dim]Summary appended to $GITHUB_STEP_SUMMARY[/dim]")
-        else:
-            console.print(
-                "[yellow]Warning: $GITHUB_STEP_SUMMARY environment variable not set.[/yellow]"
-            )
+        if pr_comment:
+            posted = post_github_pr_comment(markdown)
+            if posted:
+                console.print(
+                    "[bold green]GitHub PR comment updated successfully.[/bold green]"
+                )
+            else:
+                console.print(
+                    "[yellow]Notice: Could not post PR comment (check GITHUB_TOKEN and PR context).[/yellow]"
+                )
 
-    if pr_comment:
-        posted = post_github_pr_comment(markdown)
-        if posted:
-            console.print(
-                "[bold green]GitHub PR comment updated successfully.[/bold green]"
-            )
-        else:
-            console.print(
-                "[yellow]Notice: Could not post PR comment (check GITHUB_TOKEN and PR context).[/yellow]"
+    if fail_on_growth:
+        threshold = parse_bytes(fail_on_growth)
+        if report.total_growth_bytes >= threshold:
+            fail(
+                f"Job grew {report.total_growth_bytes} bytes "
+                f"(limit {fail_on_growth}).",
+                ExitCode.CI_FAILURE,
             )
 
 

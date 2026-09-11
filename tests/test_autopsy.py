@@ -83,7 +83,7 @@ def test_render_markdown_format(tmp_path, monkeypatch):
 
     md = render_markdown(report)
     assert "<!-- dxcli-autopsy -->" in md
-    assert "## 🔍 dxcli CI Storage Autopsy Report" in md
+    assert "## 🔍 Disk growth autopsy" in md
 
 
 def test_write_github_summary(tmp_path, monkeypatch):
@@ -114,7 +114,7 @@ def test_cli_snapshot_baseline_and_autopsy(tmp_path):
         ["autopsy", "--baseline", str(baseline_file), str(tmp_path)],
     )
     assert res2.exit_code == 0
-    assert "dxcli CI Storage Autopsy Report" in res2.output
+    assert "Disk growth autopsy" in res2.output
 
 
 def test_post_github_pr_comment_missing_token(monkeypatch):
@@ -150,3 +150,96 @@ def test_post_github_pr_comment_mocked(monkeypatch):
     monkeypatch.setattr("urllib.request.urlopen", dummy_urlopen)
 
     assert post_github_pr_comment("<!-- dxcli-autopsy -->\n## Report") is True
+
+
+def test_compare_with_previous_and_markdown():
+    from dxcli.autopsy import AutopsyReport, compare_with_previous, render_markdown
+
+    report = AutopsyReport(
+        schema=1,
+        created_at=0,
+        path=".",
+        baseline_file="b.json",
+        total_growth_bytes=5 * 1024 * 1024,
+        grown_dirs=[],
+        shrunk_dirs=[],
+        docker_growth=None,
+        probable_cause="cache grew",
+        prescriptions=[],
+        collector_errors=[],
+    )
+    comparison = compare_with_previous(
+        report,
+        {
+            "total_growth_bytes": 1 * 1024 * 1024,
+            "probable_cause": "old cache",
+            "ref": "main",
+        },
+    )
+    assert comparison.extra_bytes == 4 * 1024 * 1024
+    md = render_markdown(report, comparison)
+    assert "fatter" in md
+    assert "`main`" in md
+
+
+def test_download_growth_report_skips_without_github_env(monkeypatch, tmp_path):
+    from dxcli.autopsy import download_default_branch_growth_report
+
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    assert download_default_branch_growth_report(str(tmp_path / "x.json")) is False
+
+
+def test_cli_autopsy_write_report_compare_and_fail_on_growth(tmp_path):
+    runner = CliRunner()
+    baseline = tmp_path / "b.json"
+    bloated = tmp_path / "build"
+    bloated.mkdir()
+    (bloated / "a.bin").write_bytes(b"x" * 1024)
+
+    res1 = runner.invoke(
+        cli,
+        [
+            "snapshot-baseline",
+            "--baseline",
+            str(baseline),
+            "--no-docker",
+            str(tmp_path),
+        ],
+    )
+    assert res1.exit_code == 0
+
+    (bloated / "b.bin").write_bytes(b"y" * 50 * 1024)
+    report_path = tmp_path / "growth.json"
+    previous = tmp_path / "main.json"
+    previous.write_text(
+        json.dumps(
+            {
+                "total_growth_bytes": 100,
+                "probable_cause": "tiny",
+                "ref": "main",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    res2 = runner.invoke(
+        cli,
+        [
+            "autopsy",
+            "--baseline",
+            str(baseline),
+            "--write-report",
+            str(report_path),
+            "--compare",
+            str(previous),
+            "--fail-on-growth",
+            "1K",
+            str(tmp_path),
+        ],
+    )
+    assert res2.exit_code == 4
+    assert report_path.exists()
+    assert "fatter" in res2.output
+    saved = json.loads(report_path.read_text(encoding="utf-8"))
+    assert saved["total_growth_bytes"] >= 1024

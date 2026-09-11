@@ -80,36 +80,27 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write # Required if pr-comment: true
+      actions: read
+      pull-requests: write
 
     steps:
       - uses: actions/checkout@v4
 
-      # Phase 1: Pre-Build Guard & Baseline
-      - name: Disk Guard & Baseline
+      - name: Disk baseline
         uses: Seshadri724/diskrx@v1
         with:
-          mode: "snapshot-baseline"
-          baseline-file: "dxcli-baseline.json"
-          docker: "true"
+          mode: start
 
-      # Main Build Step
       - name: Build Application
         run: |
           docker build -t my-app:latest .
           npm test
 
-      # Phase 2: Post-Build Autopsy (Runs even on failure)
-      - name: Disk Growth Autopsy
+      - name: Disk growth autopsy
         if: always()
         uses: Seshadri724/diskrx@v1
         with:
-          mode: "autopsy"
-          baseline-file: "dxcli-baseline.json"
-          summary: "true"      # Appends to $GITHUB_STEP_SUMMARY
-          pr-comment: "true"   # Posts markdown summary to the PR
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          mode: finish
 ```
 
 ---

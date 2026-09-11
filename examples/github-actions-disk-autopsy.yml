@@ -8,34 +8,28 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Disk baseline
+        uses: Seshadri724/diskrx@v1
         with:
-          python-version: "3.11"
-
-      - name: Install dxcli
-        run: pip install diskrx
-
-      - name: Pre-Build Disk Guard & Baseline Snapshot
-        run: |
-          # 1. Fail immediately if runner is already > 90% full before build starts
-          dxcli ci --threshold 90
-          # 2. Record storage baseline including Docker layer states
-          dxcli snapshot-baseline . --output .dxcli-baseline.json --docker
+          mode: start
 
       - name: Execute Heavy Build / Docker Test Matrix
         run: |
           docker build -t myapp:test -f demo/Dockerfile.test demo/
           echo "Build completed; add your integration tests here."
 
-      - name: Post-Build Disk Autopsy (Always Runs)
+      - name: Disk autopsy
         if: always()
-        run: |
-          # Compare post-build storage vs pre-build baseline
-          # Renders markdown report to stdout and automatically populates $GITHUB_STEP_SUMMARY
-          dxcli autopsy . --baseline .dxcli-baseline.json --docker --fail-on-growth 15GB
+        uses: Seshadri724/diskrx@v1
+        with:
+          mode: finish
+          fail-on-growth: "15G"

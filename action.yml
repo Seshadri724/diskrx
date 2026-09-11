@@ -1,5 +1,5 @@
-name: "dxcli disk guard"
-description: "Diagnose disk pressure and analyze storage growth during CI builds."
+name: "Disk growth autopsy"
+description: "Snapshot disk before a CI build, then report what grew — including vs last green default-branch job."
 author: "Seshadri Naidu Vangapandu"
 branding:
   icon: "hard-drive"
@@ -7,11 +7,11 @@ branding:
 
 inputs:
   mode:
-    description: "Action mode: 'diagnose', 'snapshot-baseline', or 'autopsy'."
+    description: "start (alias snapshot-baseline), finish (alias autopsy), diagnose, snapshot-baseline, or autopsy."
     required: false
     default: "diagnose"
   baseline-file:
-    description: "Path to baseline snapshot JSON file (for snapshot-baseline and autopsy modes)."
+    description: "Path to baseline snapshot JSON file (start/finish)."
     required: false
     default: "dxcli-baseline.json"
   summary:
@@ -19,7 +19,7 @@ inputs:
     required: false
     default: "true"
   pr-comment:
-    description: "Post or update autopsy report as a GitHub PR comment."
+    description: "Post or update a single GitHub PR comment (finish/autopsy)."
     required: false
     default: "false"
   path:
@@ -27,19 +27,31 @@ inputs:
     required: false
     default: "."
   fail-on-critical:
-    description: "Exit 1 if disk is >=90% used or critical policy violations are found (diagnose mode)."
+    description: "Exit 1 if disk is >=90% used (diagnose mode)."
     required: false
     default: "true"
+  fail-on-growth:
+    description: "Exit 4 if this job grew by at least this much (e.g. 2G). Empty = do not fail."
+    required: false
+    default: ""
   docker:
     description: "Include Docker images, containers, volumes, and build cache."
     required: false
     default: "true"
   classify:
-    description: "Group disk usage by semantic category (node_modules, caches, build artifacts)."
+    description: "Group disk usage by semantic category (diagnose mode)."
     required: false
     default: "false"
   report:
-    description: "Optional path to write an HTML report (e.g. disk-report.html)."
+    description: "Optional path to write an HTML report (diagnose mode)."
+    required: false
+    default: ""
+  write-report:
+    description: "Growth report JSON uploaded as artifact diskrx-growth (finish/autopsy)."
+    required: false
+    default: "diskrx-growth.json"
+  compare-with:
+    description: "Previous growth JSON. Empty = download last default-branch artifact on pull_request."
     required: false
     default: ""
   python-version:
@@ -47,15 +59,19 @@ inputs:
     required: false
     default: "3.12"
   dxcli-version:
-    description: "Specific dxcli version to install (e.g. 0.3.0). Empty = latest."
+    description: "Install this PyPI version instead of the action checkout. Empty = install from this action."
     required: false
     default: ""
+  github-token:
+    description: "Token for PR comments and downloading the main growth artifact."
+    required: false
+    default: ${{ github.token }}
 
 runs:
   using: "composite"
   steps:
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
       with:
         python-version: ${{ inputs.python-version }}
 
@@ -65,22 +81,40 @@ runs:
         if [ -n "${{ inputs.dxcli-version }}" ]; then
           pip install "diskrx==${{ inputs.dxcli-version }}"
         else
-          pip install diskrx
+          pip install "${{ github.action_path }}"
         fi
+
+    - name: Fetch default-branch growth report
+      if: ${{ (inputs.mode == 'autopsy' || inputs.mode == 'finish') && github.event_name == 'pull_request' && inputs.compare-with == '' }}
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: |
+        python -c "from dxcli.autopsy import download_default_branch_growth_report; download_default_branch_growth_report('diskrx-growth-main.json')"
 
     - name: Run dxcli
       shell: bash
       env:
-        GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
-        if [ "${{ inputs.mode }}" = "snapshot-baseline" ]; then
+        mode="${{ inputs.mode }}"
+        if [ "$mode" = "start" ]; then mode="snapshot-baseline"; fi
+        if [ "$mode" = "finish" ]; then mode="autopsy"; fi
+
+        if [ "$mode" = "snapshot-baseline" ]; then
           args=()
           if [ "${{ inputs.docker }}" = "false" ]; then args+=(--no-docker); fi
           dxcli snapshot-baseline --baseline "${{ inputs.baseline-file }}" "${args[@]}" "${{ inputs.path }}"
-        elif [ "${{ inputs.mode }}" = "autopsy" ]; then
-          args=(--baseline "${{ inputs.baseline-file }}")
+        elif [ "$mode" = "autopsy" ]; then
+          args=(--baseline "${{ inputs.baseline-file }}" --write-report "${{ inputs.write-report }}")
           if [ "${{ inputs.summary }}" = "true" ]; then args+=(--summary); fi
           if [ "${{ inputs.pr-comment }}" = "true" ]; then args+=(--pr-comment); fi
+          if [ -n "${{ inputs.fail-on-growth }}" ]; then args+=(--fail-on-growth "${{ inputs.fail-on-growth }}"); fi
+          compare="${{ inputs.compare-with }}"
+          if [ -z "$compare" ] && [ -f diskrx-growth-main.json ]; then
+            compare="diskrx-growth-main.json"
+          fi
+          if [ -n "$compare" ]; then args+=(--compare "$compare"); fi
           dxcli autopsy "${args[@]}" "${{ inputs.path }}"
         else
           args=()
@@ -90,3 +124,11 @@ runs:
           if [ -n "${{ inputs.report }}" ];                  then args+=(--report "${{ inputs.report }}"); fi
           dxcli diagnose "${{ inputs.path }}" "${args[@]}"
         fi
+
+    - name: Upload growth report
+      if: ${{ always() && (inputs.mode == 'autopsy' || inputs.mode == 'finish') }}
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: diskrx-growth
+        path: ${{ inputs.write-report }}
+        if-no-files-found: ignore
